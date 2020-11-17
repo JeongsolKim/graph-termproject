@@ -99,12 +99,16 @@ def convert_to_binary_vec(value, ref_dict):
 
 
 def query_to_modified_line_graphs(file_path = './train/train_000.txt'):
+    '''
+    Here, we will create the modified line graphs H1, H2.
+    Input (str) : path of data file (.txt)
+    Output : node_dict (dictionary), edge_list_H1 (list of tuples), edge_list_H2 (list of tuples)
+    '''
+
     # Read all lines from one query
     with open(file_path, 'r') as f:
         lines = f.readlines()
     
-    # Here, we will create the modified line graphs H1, H2.
-
     # ----------- NODE CREATE ----------- #
     # Both graphs have the same nodes that are correspond to each TCP connection
     # node_dict = {(src, dst): mapped_id} / keys: connection between two edges, values: continuously ordered integers (0, 1, 2, ...)
@@ -125,9 +129,6 @@ def query_to_modified_line_graphs(file_path = './train/train_000.txt'):
             node_dict[(src, dst)] = len(node_dict)
             inward_neighbor = add_to_dict(inward_neighbor, key=dst, value=[src])
             outward_neighbor = add_to_dict(outward_neighbor, key=src, value=[dst])
-
-    # number of nodes in modified line graph
-    MLG_node_num = len(node_dict)
 
     # ----------- EDGE CREATE ----------- #
     # For H1, nodes are connected if they share the common source IP.
@@ -164,7 +165,60 @@ def query_to_modified_line_graphs(file_path = './train/train_000.txt'):
             edge1 = (combi[0], dst)
             edge2 = (combi[1], dst)
             edge_list_H2.append((node_dict[edge1], node_dict[edge2]))
-        
+
+    return node_dict, edge_list_H1, edge_list_H2
+
+
+def create_dgl_graph(node_dict, edge_list_H1, edge_list_H2):
+    '''
+    Create H1 and H2 as a form of dgl.graph.
+    Inputs: node_dict (dictionary), edge_list_H1 (list of tuples), edge_list_H2 (list of tuples)
+    Outpus: H1 (dgl.graph), H2 (dgl.graph)
+    '''
+    
+    # Create empty DGLGraph
+    H1 = dgl.DGLGraph()
+    H2 = dgl.DGLGraph()
+
+    # Add the same node sets.
+    H1.add_nodes(len(node_dict))
+    H2.add_nodes(len(node_dict))
+
+    # Add proper edges
+    H1.add_edges([edge[0] for edge in edge_list_H1], [edge[1] for edge in edge_list_H1])
+    H2.add_edges([edge[0] for edge in edge_list_H2], [edge[1] for edge in edge_list_H2])
+
+    return H1, H2
+
+
+def line_to_feature(line:str, node_dict:dict, feats:np.array):
+    '''
+    Fill the feature matrix with proper processing.
+    Input: line (str), node_dict (dictionary), feats (numpy array)
+    Output: feats (numpy array)
+    '''
+
+    # Split the given line into src, dst, port, time
+    infos = line.split('\t')
+
+    # Convert (src, dst) into node_id which is used in H1 and H2.
+    ips = (infos[0], infos[1])
+    node_id = node_dict[ips]
+
+    # Process the port number and add to feats[node_id, time].
+    port_num = int(infos[2])
+    time_point = int(infos[3])
+
+    # port number normalization: max 65535 / min 0 -> max 100 / min 0, (scale = order of 1e-3)
+    rescale_port = port_num * 100.0/65535.0
+
+    feats[node_id, time_point] += rescale_port
+
+    return feats
+
+
+def create_node_feature(node_dict, H1:dgl.DGLGraph, H2:dgl.DGLGraph):
+    pass
 
 def query_to_graph(file_path = './train/train_000.txt'):
     '''
@@ -175,7 +229,7 @@ def query_to_graph(file_path = './train/train_000.txt'):
     Edge features: information about time and port number.
     '''
     # Create empty DGLGraph
-    graph = dgl.DGLGraph()
+    graph = dgl.graph()
 
     # Read all lines
     with open(file_path, 'r') as f:
