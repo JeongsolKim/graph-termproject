@@ -190,7 +190,6 @@ def create_dgl_graph(node_dict, edge_list_H1, edge_list_H2):
 
     return H1, H2
 
-
 def line_to_feature(line:str, node_dict:dict, feats:np.array):
     '''
     Fill the feature matrix with proper processing.
@@ -199,15 +198,15 @@ def line_to_feature(line:str, node_dict:dict, feats:np.array):
     '''
 
     # Split the given line into src, dst, port, time
-    infos = line.split('\t')
+    infos = list(map(lambda x:int(x), line.split('\t')[0:4]))
 
     # Convert (src, dst) into node_id which is used in H1 and H2.
     ips = (infos[0], infos[1])
     node_id = node_dict[ips]
 
     # Process the port number and add to feats[node_id, time].
-    port_num = int(infos[2])
-    time_point = int(infos[3])
+    port_num = infos[2]
+    time_point = infos[3]
 
     # port number normalization: max 65535 / min 0 -> max 100 / min 0, (scale = order of 1e-3)
     rescale_port = port_num * 100.0/65535.0
@@ -217,76 +216,41 @@ def line_to_feature(line:str, node_dict:dict, feats:np.array):
     return feats
 
 
-def create_node_feature(node_dict, H1:dgl.DGLGraph, H2:dgl.DGLGraph):
-    pass
-
-def query_to_graph(file_path = './train/train_000.txt'):
+def extract_features(file_path, node_dict):
     '''
-    This function returns a DGLGraph made from a train/valid/test query data (.txt file -> DGLGraph).
-    Nodes: ordered ips in a given file.
-    Edges: Connections between scr node and dest node in a given file.
-    Node features: None
-    Edge features: information about time and port number.
+    Extract feature that reflects the pattern and connectivity from the one TCP connection history
+    Input: file_path (str), node_dict (dictionary)
+    Output: feats (numpy array)
     '''
-    # Create empty DGLGraph
-    graph = dgl.graph()
-
-    # Read all lines
     with open(file_path, 'r') as f:
         lines = f.readlines()
-
-    # ----------- NODE CREATE ----------- #
-    # mapping src and dest ips into continuously ordered integers (0, 1, 2, ...)
-    ip_dict = {}
-    for line in lines:
-        src, dest = line.split('\t')[0:2]
-        ip_dict = add_to_dict(ip_dict, src)
-        ip_dict = add_to_dict(ip_dict, dest)
-
-    sorted_ip = sorted(ip_dict)
-    sorted_ip = sorted(list(map(lambda x: int(x), sorted_ip)))
-    sorted_ip = list(map(lambda x: str(x), sorted_ip))
-
-    # Mapping ips to node ids.
-    ip_dict ={}
-    for i, ip in enumerate(sorted_ip):
-        ip_dict[ip] = i
-
-    # Add nodes to DGLGraph
-    graph.add_nodes(len(ip_dict))
-
-    # ----------- EDGE CREATE ----------- #
-    edge_dict = {}
-    for line in lines: 
-        infos = line.split('\t')
-        ips = '\t'.join(infos[0:2])
-
-        # add str ips: (port, time)
-        edge_dict = add_to_dict(edge_dict, key=ips, value=[(infos[2], infos[3])])
-
-
-    for edge in edge_dict:
-        # get a pair of nodes (ips) of each edge and convert to node id.
-        src_node =ip_dict[edge.split('\t')[0]]
-        dest_node = ip_dict[edge.split('\t')[1]]
-        
-        # process the port and time information
-        # this will be a feature vector for an edge.
-        temp_time = torch.zeros(1, 1800)
-        for pt in edge_dict[edge]:
-            # pt[0]: port / pt[1]: time
-
-            # port number normalization: max 65535 / min 0 -> max 100 / min 0, (scale = order of 1e-3)
-            rescale_port = float(pt[0]) * 100.0/65535.0
-            # one-hot time * rescaled port num
-            temp_time[0, int(pt[1])] += rescale_port
-
-        # Add edges to DGLGraph (one by one)
-        graph.add_edges(src_node, dest_node, data={'feature':temp_time})
     
-    return graph
+    node_num = len(node_dict)
+    feats = np.zeros((node_num, 1800))
+    for line in lines:
+        feats = line_to_feature(line, node_dict, feats)
+    
+    return feats
 
-def answer_to_tensor(file_path = './train/train_000.txt'):
+
+def load_graph(file_path='./train/train_000.txt', model='proposed'):
+    node_dict, edge_list_H1, edge_list_H2 = query_to_modified_line_graphs(file_path)
+    
+    if model=='proposed':
+        H1, H2 = create_dgl_graph(node_dict, edge_list_H1, edge_list_H2)
+    else:
+        (H1, H2) = (None, None)
+
+    feats = extract_features(file_path, node_dict)
+    label = answer_to_tensor(file_path)
+
+    # convert to torch.Tensor
+    feats = torch.Tensor(feats)
+
+    return H1, H2, feats, label
+
+
+def answer_to_tensor(file_path):
     '''
     This function returns a binary torch.Tensor 
     which indicates the attack types included in the given file.
@@ -314,88 +278,9 @@ def answer_to_tensor(file_path = './train/train_000.txt'):
             attacks.append(ans.strip())
 
     ans_binary = convert_to_binary_vec(attacks, att_dict)
+
     return ans_binary
 
-def preprocess(data='train', verbose:bool=True):
-    
-    '''
-    This function will preprocess the raw data (.txt file).
-    1) It will convert train, valid and test queries (or histories) into DGLGraph and save it.
-    2) It also create answer file such that make it easier to make binary labels for training.
-    3) Finally, it will convert answers (attack types for each file) into binary torch.Tensor and save it.
-    return : None
-
-    If there are already processed data, it will do nothing.
-    All the processed files are saved in './processed' directory.
-    '''
-
-    assert data in ['train', 'valid', 'test'], print('Data should be one of train, valid or test, not {}.'.format(data))
-
-    if data == 'train':
-        query_dir = './train'
-        answer_dir = './train'
-    elif data == 'valid':
-        query_dir = './valid_query'
-        answer_dir = './valid_answer'
-    elif data == 'test':
-        query_dir = './test_query'
-        answer_dir = None
-
-    if not os.path.isdir('./processed'):
-        os.mkdir('./processed')
-
-    # 0. parameter setting.
-    data_num = len(os.listdir(query_dir))
-    if verbose: print('>> [Preprocess] Convert %s data query into graph.' %data)
-    graphs_per_bin = 50
-    q_name = query_dir.split('/')[-1]
-    a_name = answer_dir.split('/')[-1] if answer_dir else ''
-
-    # 1. Check there already exists processed files.
-    all_graphs_exist = True
-    for i in range(int(data_num/graphs_per_bin) + 1):
-        if not os.path.isfile('./processed/{}_graphs_'.format(data)+str(i+1)+'.bin'):
-            all_graphs_exist = False
-            break
-
-    all_answers_exist = True
-    for i in range(int(data_num/graphs_per_bin) + 1):
-        if not os.path.isfile('./processed/{}_answers_'.format(data)+str(i+1)+'.pt'):
-            all_answers_exist = False
-            break
-    
-    # 2. Depends on the existance of files, do proper preprocessing.
-    if all_graphs_exist and all_answers_exist and verbose:
-        print('>> [Preprocess] {} graph data and answer data exist.'.format(data))
-    else:
-        for sec_num in range(int(data_num/graphs_per_bin) + 1):
-            graphs = []
-            answers = []
-            if verbose:
-                print('>> [Preprocess] Convert %d data... (%02d/%02d)' %(graphs_per_bin, sec_num+1, data_num/graphs_per_bin+1))
-                for file_num in tqdm.tqdm(range(min(graphs_per_bin, data_num-sec_num*graphs_per_bin))):
-                    if not all_graphs_exist:
-                        graph = query_to_graph(query_dir+'/{}_'.format(q_name)+str('%03d' %(file_num+sec_num*graphs_per_bin) +'.txt'))
-                        graphs.append(graph)
-                        pass
-                    if not all_answers_exist and answer_dir:  # do nothing for test dataset. (there is no answer file)
-                        answer = answer_to_tensor(answer_dir+'/{}_'.format(a_name)+str('%03d' %(file_num+sec_num*graphs_per_bin) +'.txt'))
-                        answers.append(answer)
-            else:
-                for file_num in range(min(graphs_per_bin, data_num-sec_num*graphs_per_bin)):
-                    if not all_graphs_exist:
-                        graph = query_to_graph(query_dir+'/{}_'.format(q_name)+str('%03d' %(file_num+sec_num*graphs_per_bin) +'.txt'))
-                        graphs.append(graph)
-                    
-                    if not all_answers_exist and answer_dir:
-                        answer = answer_to_tensor(answer_dir+'/{}_'.format(a_name)+str('%03d' %(file_num+sec_num*graphs_per_bin) +'.txt'))
-                        answers.append(answer)
-
-            if not all_graphs_exist:
-                save_dgl_graph(graphs, save_name='{}_graphs_'.format(data)+str(sec_num+1)+'.bin')
-                pass
-            if not all_answers_exist and answer_dir:
-                save_answer_tensor(answers, save_name='{}_answers_'.format(data)+str(sec_num+1)+'.pt')
 
 def draw_graph(graph:dgl.DGLGraph):
     nx_g = graph.to_networkx()
@@ -403,12 +288,14 @@ def draw_graph(graph:dgl.DGLGraph):
     nx.draw(nx_g, pos, with_labels=True, node_color=[[0.7, 0.7, 0.7]])
     plt.show()
 
+
 def save_dgl_graph(graphs:list, save_dir:str='./processed', save_name:str='train_graphs.bin'):
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
 
     graph_labels = {'glabel': torch.tensor(range(len(graphs)))}
     dgl.data.utils.save_graphs(save_dir+'/'+save_name, graphs, graph_labels)
+
 
 def save_answer_tensor(tensors:list, save_dir:str='./processed', save_name:str='train_ans.pt'):
     # stack tensors in a list

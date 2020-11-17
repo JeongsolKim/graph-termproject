@@ -15,6 +15,8 @@ class SimpleFFN(nn.Module):
         x = F.relu(self.dense2(x))
         x = F.log_softmax(self.dense3(x))
 
+        x = torch.mean(x, dim=0, keepdim=True)
+
         return x
 
 
