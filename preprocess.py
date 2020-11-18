@@ -268,7 +268,9 @@ def answer_to_tensor(file_path):
             attacks.append(line.split('\t')[-1].strip())  # append attack type to a list
         
     else: # in the case of valid_answer
-        with open(file_path, 'r') as f:
+        number = file_name.split('_')[-1]
+        ans_path = './valid_answer/valid_answer_' + number
+        with open(ans_path, 'r') as f:
             lines = f.readlines()
 
         if lines == []:

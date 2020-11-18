@@ -47,7 +47,6 @@ def train(epoch):
 	random.shuffle(train_list)
 
 	loss = 0.0
-	acc = 0.0
 	f1 = 0.0
 	for train_file in train_list:
 		_, _, feats, labels = load_graph(file_path='./train/'+train_file, model='ffn')
@@ -58,54 +57,46 @@ def train(epoch):
 		output = model(feats)
 
 		loss_train = Myloss(output, labels)
-		acc_train = accuracy(output, labels)
-		# f1_train = f1_score(output, labels)
+		f1_train = f1_score(output, labels)
 
 		loss_train.backward()
 		optimizer.step()
 
 		loss += loss_train.item()/len(train_list)
-		acc += acc_train.item()/len(train_list)
-		# f1 += f1_train.item()/len(train_list)
+		f1 += f1_train.item()/len(train_list)
 
-	# # Validation phase
-	# model.eval()
+	# Validation phase
+	model.eval()
 
-	# valid_list = os.listdir('./valid_query/')
-	# random.shuffle(valid_list)
+	valid_list = os.listdir('./valid_query/')
+	random.shuffle(valid_list)
 
 	loss_val = 0.0
-	acc_val = 0.0
 	f1_val = 0.0
-	# for valid_file in valid_list:
-	# 	_, _, feats, labels = load_graph(file_path='./valid_query/'+valid_file, model='ffn')
-	# 	feats = feats.to(device)
-	# 	labels = labels.to(device)
+	for valid_file in valid_list:
+		_, _, feats, labels = load_graph(file_path='./valid_query/'+valid_file, model='ffn')
+		feats = feats.to(device)
+		labels = labels.to(device)
 
-	# 	optimizer.zero_grad()
-	# 	output = model(feats)
+		optimizer.zero_grad()
+		output = model(feats)
 
-	# 	loss_valid = Myloss(output, labels)
-	# 	acc_valid = accuracy(output, labels)
-	# 	# f1_valid = f1_score(output, labels)
+		loss_valid = Myloss(output, labels)
+		f1_valid = f1_score(output, labels)
 
-	# 	loss_val += loss_valid.item()/len(valid_list)
-	# 	acc_val += acc_valid.item()/len(valid_list)
-	# 	# f1_val += f1_valid.item()/len(valid_list)
+		loss_val += loss_valid.item()/len(valid_list)
+		f1_val += f1_valid.item()/len(valid_list)
 
-	print(loss_train, acc_train)
 
 	if (epoch%10 == 0 or epoch==0):
 		print('Epoch: {:04d}'.format(epoch+1),
 		'loss_train: {:.4f}'.format(loss_train.item()),
-		'acc_train: {:.4f}'.format(acc_train.item()),
-		# 'f1_train: {:.4f}'.format(f1_train.item()),
+		'f1_train: {:.4f}'.format(f1_train.item()),
 		'loss_val: {:.4f}'.format(loss_val.item()),
-		'acc_val: {:.4f}'.format(acc_val.item()),
 		'f1_val: {:.4f}'.format(f1_val.item()),
 		'time: {:.4f}s'.format(time.time() - t))
 
-	return [loss_train.item(), loss_val.item()], [acc_train.item(), acc_val.item()]
+	return [loss_train.item(), loss_val.item()], [f1_train.item(), f1_val.item()]
 
 def plot_train_curve(train_data, valid_data, pretitle='Loss graph', argument='loss'):
 	plt.figure()
@@ -128,21 +119,21 @@ def plot_train_curve(train_data, valid_data, pretitle='Loss graph', argument='lo
 t_total = time.time()
 train_loss_history = []
 val_loss_history = []
-train_acc_history = []
-val_acc_history = []
+train_f1_history = []
+val_f1_history = []
 for epoch in tqdm.tqdm(range(args.epochs)):
-	[train_loss, val_loss],[train_acc, val_acc] = train(epoch)
+	[train_loss, val_loss],[train_f1, val_f1] = train(epoch)
 
 	# record the performance
 	train_loss_history.append(train_loss)
 	val_loss_history.append(val_loss)
-	train_acc_history.append(train_acc)
-	val_acc_history.append(val_acc)
+	train_f1_history.append(train_f1)
+	val_f1_history.append(val_f1)
 
-# plot the learning curve (loss and accuracy)
+# plot the learning curve (loss and f1 score)
 if args.plot:
 	plot_train_curve(train_loss_history, val_loss_history)
-	plot_train_curve(train_acc_history, val_acc_history)
+	plot_train_curve(train_f1_history, val_f1_history)
 
 print("Optimization Finished!")
 print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
