@@ -233,10 +233,10 @@ def extract_features(file_path, node_dict):
     return feats
 
 
-def load_graph(file_path='./train/train_000.txt', model='proposed'):
+def load_graph(file_path='./train/train_000.txt', mode='proposed'):
     node_dict, edge_list_H1, edge_list_H2 = query_to_modified_line_graphs(file_path)
     
-    if model=='proposed':
+    if mode=='proposed':
         H1, H2 = create_dgl_graph(node_dict, edge_list_H1, edge_list_H2)
     else:
         (H1, H2) = (None, None)

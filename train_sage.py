@@ -28,7 +28,7 @@ else:
 	device = 'cpu'
 
 # Load model
-model = SimpleFFN(in_feats=1800, nhid=512, num_classes=25).to(device)
+model = MyModel(in_dim=1800, hidden_dim=512, num_classes=25, aggregator='mean', activation='sigmoid').to(device)
 
 # Load optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -49,12 +49,14 @@ def train(epoch):
 	loss_train = 0.0
 	f1 = 0.0
 	for train_file in train_list:
-		_, _, feats, labels = load_graph(file_path='train/'+train_file, mode='ffn')
+		H1, H2, feats, labels = load_graph(file_path='train/'+train_file, mode='proposed')
+		H1.to(device)
+		H2.to(device)
 		feats = feats.to(device)
 		labels = labels.to(device)
 
 		optimizer.zero_grad()
-		output = model(feats)
+		output = model(H1, H2, feats)
 
 		loss = Myloss(output, labels)
 		f1_train = f1_score(output, labels)
@@ -65,7 +67,7 @@ def train(epoch):
 		loss_train += loss.item()/len(train_list)
 		f1 += f1_train/len(train_list)
 
-	loss_val, f1_val = evaluate(model, mode='ffn', save=False)
+	loss_val, f1_val = evaluate(model, mode='proposed', save=False)
 
 	if (epoch%1 == 0 or epoch==0):
 		print('Epoch: {:04d} | '.format(epoch+1),
@@ -78,7 +80,7 @@ def train(epoch):
 	return [loss_train, loss_val], [f1_train, f1_val]
 
 
-def evaluate(model, file_path='valid_query/', mode='ffn', save=False):
+def evaluate(model, file_path='valid_query/', mode='proposed', save=False):
 	model.eval()
 
 	valid_list = os.listdir(file_path)
@@ -86,12 +88,14 @@ def evaluate(model, file_path='valid_query/', mode='ffn', save=False):
 	loss_val = 0.0
 	f1_val = 0.0
 	for valid_file in valid_list:
-		_, _, feats, labels = load_graph(file_path=file_path + valid_file, mode=mode)
+		H1, H2, feats, labels = load_graph(file_path=file_path + valid_file, mode=mode)
+		H1 = H1.to(device)
+		H2 = H2.to(device)
 		feats = feats.to(device)
 		labels = labels.to(device)
 
 		optimizer.zero_grad()
-		output = model(feats)
+		output = model(H1, H2, feats)
 
 		loss = Myloss(output, labels)
 		f1_valid = f1_score(output, labels)
@@ -142,7 +146,5 @@ if args.plot:
 	plot_train_curve(train_f1_history, val_f1_history)
 
 print("Optimization Finished!")
-
-print("Save the prediction.")
-_,_ = evaluate(model, file_path='valid/', save_path='./prediction/ffn' mode='ffn', save=True)
+_,_ = evaluate(model, file_path='valid/', save_path='./prediction/sage' mode='ffn', save=True)
 print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
