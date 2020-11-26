@@ -78,7 +78,7 @@ def train(epoch):
 	return [loss_train, loss_val], [f1_train, f1_val]
 
 
-def evaluate(model, file_path='valid_query/', mode='ffn', save=False):
+def evaluate(model, file_path='valid_query/', save_path=None, mode='proposed', save=False):
 	model.eval()
 
 	valid_list = os.listdir(file_path)
@@ -86,7 +86,7 @@ def evaluate(model, file_path='valid_query/', mode='ffn', save=False):
 	loss_val = 0.0
 	f1_val = 0.0
 	for valid_file in valid_list:
-		_, _, feats, labels = load_graph(file_path=file_path + valid_file, mode=mode)
+		H1, H2, feats, labels = load_graph(file_path=file_path + valid_file, mode=mode)
 		feats = feats.to(device)
 		labels = labels.to(device)
 
@@ -100,7 +100,7 @@ def evaluate(model, file_path='valid_query/', mode='ffn', save=False):
 		f1_val += f1_valid/len(valid_list)
 
 		if save:
-			forward_and_save_prediction(model, 0.5, file_path+valid_file, device, mode)
+			save_prediction(output, 0.5, file_path + valid_file, save_path, device, mode)
 
 	return loss_val, f1_val
 
@@ -144,5 +144,5 @@ if args.plot:
 print("Optimization Finished!")
 
 print("Save the prediction.")
-_,_ = evaluate(model, file_path='valid/', save_path='./prediction/ffn' mode='ffn', save=True)
+_,_ = evaluate(model, file_path='valid_query/', save_path='./prediction/ffn/', mode='ffn', save=True)
 print("Total time elapsed: {:.4f}s".format(time.time() - t_total))

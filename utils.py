@@ -47,28 +47,14 @@ def visualize(labels, g):
 					 node_color=labels, edge_color='k',
 					 arrows=False, width=0.5, style='dotted', with_labels=False)
 
-def forward_and_save_prediction(model_instance, threshold, file_path, save_path, device, mode='proposed'):
-	# Load attack_dictionary
+def save_prediction(output, threshold, file_path, save_path, device, mode='proposed'):
 	attack_dict = load_attackDict()
-	
-	# Load data
-	H1, H2, feats, labels = load_graph(file_path, mode)
-	feats = feats.to(device)
-
-	# Feed forward to the trained model
-	if mode == 'ffn':
-		output = model_instance(feats)
-	
-	elif mode == 'proposed':
-		H1 = H1.to(device)
-		H2 = H2.to(device)
-		output = model_instance(H1, H2, feats)
 
 	# Thresholding and get the list of predicted attack types
 	output = output.detach().cpu().numpy()
 	pred = np.where(output>threshold)[1]
-
 	attack_list = []
+
 	for pred_id in pred:
 		# Benign attack ignore.
 		if pred_id == 0:

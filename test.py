@@ -17,4 +17,4 @@ print(output)
 score = f1_score(output, label)
 print(score)
 
-forward_and_save_prediction(model_instance=model, threshold=0.5, file_path='train/train_001.txt', device='cpu', mode='proposed')
+# forward_and_save_prediction(model_instance=model, threshold=0.5, file_path='train/train_001.txt', device='cpu', mode='proposed')
