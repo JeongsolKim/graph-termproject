@@ -20,5 +20,5 @@ import torch
 
 # forward_and_save_prediction(model_instance=model, threshold=0.5, file_path='train/train_001.txt', device='cpu', mode='proposed')
 
-f1 = total_f1_score('valid_answer/', 'prediction/line/valid_query/')
+f1 = total_f1_score('valid_answer/', 'prediction/sage/valid_query/')
 print(f1)

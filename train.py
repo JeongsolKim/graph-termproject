@@ -3,6 +3,7 @@ import torch
 import os
 import warnings
 import argparse
+import datetime
 import time
 import random
 import tqdm
@@ -17,10 +18,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--no-cuda', action='store_true', default=False, help='Disables CUDA training.')
 parser.add_argument('--gpu', type=int, default=0, help='Number of GPU to use for training.')
 parser.add_argument('--model', type=str, default='proposed', help="One of 'ffn', 'sage_on_line', 'proposed'.")
-parser.add_argument('--epochs', type=int, default=1, help='Number of epochs to train.')
-parser.add_argument('--lr', type=float, default=0.01, help='Initial learning rate.')
-parser.add_argument('--sample_ratio', type=float, default=0.6, help='Fraction of used training data for each epoch (<=1).')
+parser.add_argument('--epochs', type=int, default=5, help='Number of epochs to train.')
+parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rate.')
+parser.add_argument('--sample_ratio', type=float, default=0.8, help='Fraction of used training data for each epoch (<=1).')
 parser.add_argument('--plot', type=bool, default=False, help='Draw learning curve after training.')
+parser.add_argument('--model_save_path', type=str, default='./model/proposed/model.pt')
+parser.add_argument('--inference_save_path', type=str, default='./prediction/proposed/')
 
 args = parser.parse_args()
 
@@ -42,15 +45,15 @@ else:
 if args.model == 'ffn':
 	loader = FeatureLabelLoader()
 	model = SimpleFFN(in_feats=1800, nhid=256, num_classes=25).to(device)
-	print('>> Model: Two layers feed-forward network on features')
+	print('\n>> Model: Two layers feed-forward network on features')
 elif args.model == 'sage_on_line':
 	loader = LineGraphLoader()
 	model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean', activation='sigmoid').to(device)
-	print('>> Model: GraphSage on linegraph')
+	print('\n>> Model: GraphSage on linegraph')
 elif args.model == 'proposed':
 	loader = ModifiedLineGraphLoader()
 	model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean', activation='sigmoid').to(device)
-	print('>> Model: Two GraphSages on modified linegraph (proposed)')
+	print('\n>> Model: Two GraphSages on modified linegraph (proposed)')
 
 
 # Load optimizer
@@ -112,7 +115,7 @@ def train(epoch):
 	loss_val, f1_val = evaluate(model, save=False)
 
 	if (epoch%1 == 0 or epoch==0):
-		print('Epoch: {:04d} | '.format(epoch+1),
+		print('>> Epoch: {:04d} | '.format(epoch+1),
 		'loss_train: {:.4f} | '.format(loss_train),
 		'f1_train: {:.4f} | '.format(f1_train),
 		'loss_val: {:.4f} | '.format(loss_val),
@@ -180,6 +183,8 @@ train_loss_history = []
 val_loss_history = []
 train_f1_history = []
 val_f1_history = []
+
+print('>> [{}] Training starts.'.format(datetime.datetime.now()))
 for epoch in range(args.epochs):
 	[train_loss, val_loss],[train_f1, val_f1] = train(epoch)
 
@@ -194,8 +199,21 @@ if args.plot:
 	plot_train_curve(train_loss_history, val_loss_history)
 	plot_train_curve(train_f1_history, val_f1_history)
 
-print("Optimization Finished!")
+print('>> [{}] Optimization Finished!'.format(datetime.datetime.now()))
 
-print("Save the prediction.")
-_,_ = evaluate(model, file_path='valid_query/', save_path='./prediction/line/', save=True)
-print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
+print('\n>> [{}] Save the model checkpoint.'.format(datetime.datetime.now()))
+save_dir = os.path.split(args.model_save_path)[0]
+if not os.path.exists(save_dir):
+	os.makedirs(save_dir, exist_ok=True)
+
+# torch.save({
+# 	'epoch':epoch,
+# 	'model_state_dict':model.state_dict(),
+# 	'optimizer_state_dict':optimizer.state_dict(),
+# 	'loss':Myloss}, args.model_save_path)
+
+print('>> [{}] Inference and save the results.'.format(datetime.datetime.now()))
+if not os.path.exists(args.inference_save_path):
+	os.makedirs(args.inference_save_path, exist_ok=True)
+# _,_ = evaluate(model, file_path='valid_query/', save_path=args.inference_save_path, save=True)
+print(">> Total time elapsed: {:.4f}s".format(time.time() - t_total))

@@ -238,10 +238,3 @@ def save_prediction(output, threshold, file_path, save_path, device):
 			elif i == len(attack_list)-1:
 				f.write(att)
 
-
-# Calculate F1-score, prec, recall. Plot ROC curve, ..
-def analysis(answer_dir, predict_dir):
-	test_thresholds = np.arange(0, 1, 0.05)
-
-	for threshold in test_thresholds:
-		pass
