@@ -206,14 +206,14 @@ save_dir = os.path.split(args.model_save_path)[0]
 if not os.path.exists(save_dir):
 	os.makedirs(save_dir, exist_ok=True)
 
-# torch.save({
-# 	'epoch':epoch,
-# 	'model_state_dict':model.state_dict(),
-# 	'optimizer_state_dict':optimizer.state_dict(),
-# 	'loss':Myloss}, args.model_save_path)
+torch.save({
+	'epoch':epoch,
+	'model_state_dict':model.state_dict(),
+	'optimizer_state_dict':optimizer.state_dict(),
+	'loss':Myloss}, args.model_save_path)
 
 print('>> [{}] Inference and save the results.'.format(datetime.datetime.now()))
 if not os.path.exists(args.inference_save_path):
 	os.makedirs(args.inference_save_path, exist_ok=True)
-# _,_ = evaluate(model, file_path='valid_query/', save_path=args.inference_save_path, save=True)
+_,_ = evaluate(model, file_path='valid_query/', save_path=args.inference_save_path, save=True)
 print(">> Total time elapsed: {:.4f}s".format(time.time() - t_total))

@@ -3,13 +3,11 @@ import torch
 import os
 import warnings
 import argparse
-import datetime
-import time
-import random
-import tqdm
+import matplotlib.pyplot as plt
 from graphloaders import *
 from model import *
 from utils import *
+from sklearn import metrics
 
 warnings.filterwarnings('ignore')
 
@@ -50,5 +48,68 @@ Myloss = nn.BCELoss().to(device)
 # Load
 ckpt = torch.load(args.model_load_path)
 model.load_state_dict(ckpt['model_state_dict'])
-
 model.eval()
+
+# Initialize
+class_num = 25
+valid_list = os.listdir('valid_query/')
+y_true = torch.tensor(np.zeros([len(valid_list), class_num])).to(device)
+y_pred = torch.tensor(np.zeros([len(valid_list), class_num])).to(device)
+
+# Inference
+for i, valid_file in enumerate(valid_list):
+	if args.model == 'proposed':
+		H1, H2, feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file)
+		H1 = H1.to(device)
+		H2 = H2.to(device)
+		feats = feats.to(device)
+		output = model(H1, H2, feats)
+		labels = labels.to(device)
+		y_true[i, :] = labels
+		y_pred[i, :] = output
+
+	elif args.model == 'sage_on_line':
+		gl, feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file)
+		gl = gl.to(device)
+		feats = feats.to(device)
+		labels = labels.to(device)
+		output = model(gl, feats)
+		y_true[i, :] = labels
+		y_pred[i, :] = output
+
+	elif args.model == 'ffn':
+		feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file)
+		feats = feats.to(device)
+		labels = labels.to(device)
+		output = model(feats)
+		y_true[i, :] = labels
+		y_pred[i, :] = output
+
+# ROC curve
+y_true = y_true.cpu().detach().numpy()
+y_pred = y_pred.cpu().detach().numpy()
+
+fpr = {}
+tpr = {}
+roc_auc = {}
+for i in range(class_num):
+	fpr[i], tpr[i], _ = metrics.roc_curve(y_true[:, i], y_pred[:, i])
+	roc_auc[i] = metrics.auc(fpr[i], tpr[i])
+
+
+if not os.path.exists(args.analyze_save_path):
+	os.makedirs(args.analyze_save_path, exist_ok=True)
+
+# Plot of a ROC curve for a specific class
+for i in range(class_num):
+	plt.figure()
+	plt.plot(fpr[i], tpr[i], label='ROC curve (area = %0.2f)' % roc_auc[i])
+	plt.plot([0, 1], [0, 1], 'k--')
+	plt.xlim([0.0, 1.0])
+	plt.ylim([0.0, 1.05])
+	plt.xlabel('False Positive Rate')
+	plt.ylabel('True Positive Rate')
+	plt.title('Receiver operating characteristic example')
+	plt.legend(loc="lower right")
+	plt.savefig(args.analyze_save_path+'class_{}.png'.format(i+1))
+	
