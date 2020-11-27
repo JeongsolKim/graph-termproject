@@ -15,34 +15,43 @@ warnings.filterwarnings('ignore')
 # Training settings
 parser = argparse.ArgumentParser()
 parser.add_argument('--no-cuda', action='store_true', default=False, help='Disables CUDA training.')
-parser.add_argument('--graph_type', type=str, default='only_feats', help='only_feats or lingraph or modified_linegraph')
+parser.add_argument('--gpu', type=int, default=0, help='Number of GPU to use for training.')
+parser.add_argument('--model', type=str, default='proposed', help="One of 'ffn', 'sage_on_line', 'proposed'.")
 parser.add_argument('--epochs', type=int, default=1, help='Number of epochs to train.')
 parser.add_argument('--lr', type=float, default=0.01, help='Initial learning rate.')
+parser.add_argument('--sample_ratio', type=float, default=0.6, help='Fraction of used training data for each epoch (<=1).')
 parser.add_argument('--plot', type=bool, default=False, help='Draw learning curve after training.')
 
 args = parser.parse_args()
 
 # Check input parser
 args.cuda = not args.no_cuda and torch.cuda.is_available()
-assert args.graph_type in ['only_feats', 'linegraph', 'modified_linegraph'], \
-	print('--graph_type should be among only_feats or linegraph or modified_linegraph, not {}'.format(args.graph_type))
+assert args.model in ['ffn', 'sage_on_line', 'proposed'], \
+	'--model should be among ffn, sage_on_line, and proposed, not {}'.format(args.model)
+assert args.sample_ratio <=1 and args.sample_ratio>0,\
+	'Sample ratio should be in (0, 1], not {}.'.format(args.sample_ratio)
 
-gpu_num = 1
+# Check the device
 if args.cuda:
+	gpu_num = args.gpu
 	device = 'cuda:{}'.format(gpu_num)
 else:
 	device = 'cpu'
 
-# Data loader
-if args.graph_type == 'linegraph':
-	loader = LineGraphLoader()
-elif args.graph_type == 'modified_linegraph':
-	loader = ModifiedLineGraphLoader()
-elif args.graph_type == 'only_feats':
+# Data loader and Model
+if args.model == 'ffn':
 	loader = FeatureLabelLoader()
+	model = SimpleFFN(in_feats=1800, nhid=256, num_classes=25).to(device)
+	print('>> Model: Two layers feed-forward network on features')
+elif args.model == 'sage_on_line':
+	loader = LineGraphLoader()
+	model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean', activation='sigmoid').to(device)
+	print('>> Model: GraphSage on linegraph')
+elif args.model == 'proposed':
+	loader = ModifiedLineGraphLoader()
+	model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean', activation='sigmoid').to(device)
+	print('>> Model: Two GraphSages on modified linegraph (proposed)')
 
-# Load model
-model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean', activation='sigmoid').to(device)
 
 # Load optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -55,29 +64,41 @@ def train(epoch):
 
 	# Training phase
 	model.train()
-
-	# Sampling ratio
-	sample_ratio = 0.6
 	
 	# Prepare file_list
 	train_list = os.listdir('train/')
 	random.shuffle(train_list)
 
 	# sampling
-	sample_num = int(sample_ratio*len(train_list))
+	sample_num = int(args.sample_ratio*len(train_list))
 	train_list = train_list[0:sample_num]
 
 	loss_train = 0.0
 	f1 = 0.0
 	for train_file in train_list:
-		H1, H2, feats, labels = loader.load_graph(file_path='train/'+train_file)
-		H1 = H1.to(device)
-		H2 = H2.to(device)
-		feats = feats.to(device)
-		labels = labels.to(device)
+		if args.model == 'proposed':
+			H1, H2, feats, labels = loader.load_graph(file_path='train/'+train_file)
+			H1 = H1.to(device)
+			H2 = H2.to(device)
+			feats = feats.to(device)
+			labels = labels.to(device)
+			optimizer.zero_grad()
+			output = model(H1, H2, feats)
+		
+		elif args.model == 'sage_on_line':
+			gl, feats, labels = loader.load_graph(file_path='train/'+train_file)
+			gl = gl.to(device)
+			feats = feats.to(device)
+			labels = labels.to(device)
+			optimizer.zero_grad()
+			output = model(gl, feats)
 
-		optimizer.zero_grad()
-		output = model(H1, H2, feats)
+		elif args.model == 'ffn':
+			feats, labels = loader.load_graph(file_path='train/'+train_file)
+			feats = feats.to(device)
+			labels = labels.to(device)
+			optimizer.zero_grad()
+			output = model(feats)
 
 		loss = Myloss(output, labels)
 		f1_train = f1_score(output, labels)
@@ -109,14 +130,29 @@ def evaluate(model, file_path='valid_query/', save_path=None, save=False):
 	loss_val = 0.0
 	f1_val = 0.0
 	for valid_file in valid_list:
-		H1, H2, feats, labels = loader.load_graph(file_path=file_path + valid_file)
-		H1 = H1.to(device)
-		H2 = H2.to(device)
-		feats = feats.to(device)
-		labels = labels.to(device)
+		if args.model == 'proposed':
+			H1, H2, feats, labels = loader.load_graph(file_path=file_path + valid_file)
+			H1 = H1.to(device)
+			H2 = H2.to(device)
+			feats = feats.to(device)
+			labels = labels.to(device)
+			optimizer.zero_grad()
+			output = model(H1, H2, feats)
+		
+		elif args.model == 'sage_on_line':
+			gl, feats, labels = loader.load_graph(file_path=file_path + valid_file)
+			gl = gl.to(device)
+			feats = feats.to(device)
+			labels = labels.to(device)
+			optimizer.zero_grad()
+			output = model(gl, feats)
 
-		optimizer.zero_grad()
-		output = model(H1, H2, feats)
+		elif args.model == 'ffn':
+			feats, labels = loader.load_graph(file_path=file_path + valid_file)
+			feats = feats.to(device)
+			labels = labels.to(device)
+			optimizer.zero_grad()
+			output = model(feats)
 
 		loss = Myloss(output, labels)
 		f1_valid = f1_score(output, labels)
@@ -125,7 +161,7 @@ def evaluate(model, file_path='valid_query/', save_path=None, save=False):
 		f1_val += f1_valid/len(valid_list)
 
 		if save:
-			save_prediction(output, 0.5, file_path + valid_file, save_path, device, mode)
+			save_prediction(output, 0.5, file_path + valid_file, save_path, device)
 
 	return loss_val, f1_val
 
@@ -137,14 +173,6 @@ def plot_train_curve(train_data, valid_data, pretitle='Loss graph', argument='lo
 	plt.legend(['Train ' + argument, 'Valid '+ argument])
 	plt.show()
 
-###################################### DOTO ######################################
-# 1. make customized dataset class
-# 2. make function for constructing the modified line graphs
-# 3. make entire structure for training
-# - for SVM
-# - for simple FFN
-# - for GraphSAGE
-# 4. graphics.
 
 ###################################### Model Train ######################################
 t_total = time.time()
@@ -167,5 +195,7 @@ if args.plot:
 	plot_train_curve(train_f1_history, val_f1_history)
 
 print("Optimization Finished!")
-# _,_ = evaluate(model, file_path='valid_query/', save_path='./prediction/sage/', mode='proposed', save=True)
+
+print("Save the prediction.")
+_,_ = evaluate(model, file_path='valid_query/', save_path='./prediction/line/', save=True)
 print("Total time elapsed: {:.4f}s".format(time.time() - t_total))

@@ -25,15 +25,27 @@ class MyModel(nn.Module):
 	def __init__(self, in_dim, hidden_dim, num_classes, aggregator='mean', activation='sigmoid'):
 		super(MyModel, self).__init__()
 		# We make two GNN model for H1 and H2.
-		self.SAGE1 = GraphSage(in_dim, hidden_dim, num_classes, aggregator, activation)
-		self.SAGE2 = GraphSage(in_dim, hidden_dim, num_classes, aggregator, activation)
+		self.SAGE1 = GraphSage(in_dim, hidden_dim, num_classes, aggregator, None)
+		self.SAGE2 = GraphSage(in_dim, hidden_dim, num_classes, aggregator, None)
 
 	def forward(self, H1, H2, feats):
 		H1_rep = self.SAGE1(H1, feats)
 		H2_rep = self.SAGE2(H2, feats)
 
 		# last aggregation
-		return (H1_rep+H2_rep)/2
+		return torch.sigmoid((H1_rep+H2_rep)/2)
+
+
+class MyModel_line(nn.Module):
+	def __init__(self, in_dim, hidden_dim, num_classes, aggregator='mean', activation='sigmoid'):
+		super(MyModel_line, self).__init__()
+		# This model is GraphSage on line-graph.
+		self.SAGE = GraphSage(in_dim, hidden_dim, num_classes, aggregator, None)
+	
+	def forward(self, gl, feats):
+		gl_rep = self.SAGE(gl, feats)
+
+		return torch.sigmoid(gl_rep)
 
 
 class GraphSage(nn.Module):
@@ -42,10 +54,12 @@ class GraphSage(nn.Module):
 		self.sageconv1 = dglnn.SAGEConv(in_feats=in_dim,
 										out_feats=hidden_dim,
 										aggregator_type=aggregator,
+										feat_drop=0,
 										bias=False)
 		self.sageconv2 = dglnn.SAGEConv(in_feats=hidden_dim,
 										out_feats=hidden_dim,
 										aggregator_type=aggregator,
+										feat_drop=0,
 										bias=False)
 		self.linear = nn.Linear(hidden_dim, out_dim, bias=False)
 		self.activation = activation

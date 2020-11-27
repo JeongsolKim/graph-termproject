@@ -6,7 +6,7 @@ import argparse
 import time
 import random
 import tqdm
-from preprocess import *
+from graphloaders import *
 from model import *
 from utils import *
 
@@ -16,19 +16,31 @@ warnings.filterwarnings('ignore')
 parser = argparse.ArgumentParser()
 parser.add_argument('--no-cuda', action='store_true', default=False, help='Disables CUDA training.')
 parser.add_argument('--epochs', type=int, default=1, help='Number of epochs to train.')
+parser.add_argument('--graph_type', type=str, default='only_feats', help='only_feats or lingraph or modified_linegraph')
 parser.add_argument('--lr', type=float, default=0.01, help='Initial learning rate.')
 parser.add_argument('--plot', type=bool, default=False, help='Draw learning curve after training.')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
+assert args.graph_type in ['only_feats', 'linegraph', 'modified_linegraph'], \
+	print('--graph_type should be among only_feats or linegraph or modified_linegraph, not {}'.format(args.graph_type))
 
+gpu_num = 0
 if args.cuda:
-	device = 'cuda'
+	device = 'cuda:{}'.format(gpu_num)
 else:
 	device = 'cpu'
 
+# Data loader
+if args.graph_type == 'linegraph':
+	loader = LineGraphLoader()
+elif args.graph_type == 'modified_linegraph':
+	loader = ModifiedLineGraphLoader()
+elif args.graph_type == 'only_feats':
+	loader = FeatureLabelLoader()
+
 # Load model
-model = SimpleFFN(in_feats=1800, nhid=512, num_classes=25).to(device)
+model = SimpleFFN(in_feats=1800, nhid=256, num_classes=25).to(device)
 
 # Load optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -39,6 +51,9 @@ Myloss = nn.BCELoss().to(device)
 def train(epoch):
 	t = time.time()
 
+	# Sampling ratio
+	sample_ratio = 0.6
+
 	# Training phase
 	model.train()
 	
@@ -46,10 +61,14 @@ def train(epoch):
 	train_list = os.listdir('train/')
 	random.shuffle(train_list)
 
+	# sampling
+	sample_num = int(sample_ratio*len(train_list))
+	train_list = train_list[0:sample_num]
+
 	loss_train = 0.0
 	f1 = 0.0
 	for train_file in train_list:
-		_, _, feats, labels = load_graph(file_path='train/'+train_file, mode='ffn')
+		feats, labels = loader.load_graph(file_path='train/'+train_file)
 		feats = feats.to(device)
 		labels = labels.to(device)
 
@@ -65,7 +84,7 @@ def train(epoch):
 		loss_train += loss.item()/len(train_list)
 		f1 += f1_train/len(train_list)
 
-	loss_val, f1_val = evaluate(model, mode='ffn', save=False)
+	loss_val, f1_val = evaluate(model, save=False)
 
 	if (epoch%1 == 0 or epoch==0):
 		print('Epoch: {:04d} | '.format(epoch+1),
@@ -78,7 +97,7 @@ def train(epoch):
 	return [loss_train, loss_val], [f1_train, f1_val]
 
 
-def evaluate(model, file_path='valid_query/', save_path=None, mode='proposed', save=False):
+def evaluate(model, file_path='valid_query/', save_path=None, save=False):
 	model.eval()
 
 	valid_list = os.listdir(file_path)
@@ -86,7 +105,7 @@ def evaluate(model, file_path='valid_query/', save_path=None, mode='proposed', s
 	loss_val = 0.0
 	f1_val = 0.0
 	for valid_file in valid_list:
-		H1, H2, feats, labels = load_graph(file_path=file_path + valid_file, mode=mode)
+		feats, labels = loader.load_graph(file_path=file_path + valid_file)
 		feats = feats.to(device)
 		labels = labels.to(device)
 
@@ -144,5 +163,5 @@ if args.plot:
 print("Optimization Finished!")
 
 print("Save the prediction.")
-_,_ = evaluate(model, file_path='valid_query/', save_path='./prediction/ffn/', mode='ffn', save=True)
+# _,_ = evaluate(model, file_path='valid_query/', save_path='./prediction/ffn/', mode='ffn', save=True)
 print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
