@@ -20,10 +20,11 @@ parser.add_argument('--gpu', type=int, default=0, help='Number of GPU to use for
 parser.add_argument('--model', type=str, default='proposed', help="One of 'ffn', 'sage_on_line', 'proposed'.")
 parser.add_argument('--epochs', type=int, default=5, help='Number of epochs to train.')
 parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rate.')
-parser.add_argument('--sample_ratio', type=float, default=0.8, help='Fraction of used training data for each epoch (<=1).')
+parser.add_argument('--sample_ratio', type=float, default=0.7, help='Fraction of used training data for each epoch (<=1).')
+parser.add_argument('--c', type=float, default=1.0, help='Scale constant for port number used in extracting edge features.')
 parser.add_argument('--plot', type=bool, default=False, help='Draw learning curve after training.')
-parser.add_argument('--model_save_path', type=str, default='./model/proposed/model.pt')
-parser.add_argument('--inference_save_path', type=str, default='./prediction/proposed/')
+parser.add_argument('--model_save_path', type=str, default='./model/proposed/model.pt', help='Save file name for the trained model. (.pt)')
+parser.add_argument('--inference_save_path', type=str, default='./prediction/proposed/', help='Directory for saving the inference results.')
 
 args = parser.parse_args()
 
@@ -40,21 +41,21 @@ if args.cuda:
 	device = 'cuda:{}'.format(gpu_num)
 else:
 	device = 'cpu'
+print('\n>> Device: {}'.format(device))
 
 # Data loader and Model
 if args.model == 'ffn':
 	loader = FeatureLabelLoader()
 	model = SimpleFFN(in_feats=1800, nhid=256, num_classes=25).to(device)
-	print('\n>> Model: Two layers feed-forward network on features')
+	print('>> Model: Two layers feed-forward network on features')
 elif args.model == 'sage_on_line':
 	loader = LineGraphLoader()
-	model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean', activation='sigmoid').to(device)
-	print('\n>> Model: GraphSage on linegraph')
+	model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
+	print('>> Model: GraphSage on linegraph')
 elif args.model == 'proposed':
 	loader = ModifiedLineGraphLoader()
-	model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean', activation='sigmoid').to(device)
-	print('\n>> Model: Two GraphSages on modified linegraph (proposed)')
-
+	model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
+	print('>> Model: Two GraphSages on modified linegraph (proposed)')
 
 # Load optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -80,7 +81,7 @@ def train(epoch):
 	f1 = 0.0
 	for train_file in train_list:
 		if args.model == 'proposed':
-			H1, H2, feats, labels = loader.load_graph(file_path='train/'+train_file)
+			H1, H2, feats, labels = loader.load_graph(file_path='train/'+train_file, c=args.c)
 			H1 = H1.to(device)
 			H2 = H2.to(device)
 			feats = feats.to(device)
@@ -89,7 +90,7 @@ def train(epoch):
 			output = model(H1, H2, feats)
 		
 		elif args.model == 'sage_on_line':
-			gl, feats, labels = loader.load_graph(file_path='train/'+train_file)
+			gl, feats, labels = loader.load_graph(file_path='train/'+train_file, c=args.c)
 			gl = gl.to(device)
 			feats = feats.to(device)
 			labels = labels.to(device)
@@ -97,7 +98,7 @@ def train(epoch):
 			output = model(gl, feats)
 
 		elif args.model == 'ffn':
-			feats, labels = loader.load_graph(file_path='train/'+train_file)
+			feats, labels = loader.load_graph(file_path='train/'+train_file, c=args.c)
 			feats = feats.to(device)
 			labels = labels.to(device)
 			optimizer.zero_grad()
@@ -134,7 +135,7 @@ def evaluate(model, file_path='valid_query/', save_path=None, save=False):
 	f1_val = 0.0
 	for valid_file in valid_list:
 		if args.model == 'proposed':
-			H1, H2, feats, labels = loader.load_graph(file_path=file_path + valid_file)
+			H1, H2, feats, labels = loader.load_graph(file_path=os.path.join(file_path,valid_file), c=args.c)
 			H1 = H1.to(device)
 			H2 = H2.to(device)
 			feats = feats.to(device)
@@ -143,7 +144,7 @@ def evaluate(model, file_path='valid_query/', save_path=None, save=False):
 			output = model(H1, H2, feats)
 		
 		elif args.model == 'sage_on_line':
-			gl, feats, labels = loader.load_graph(file_path=file_path + valid_file)
+			gl, feats, labels = loader.load_graph(file_path=os.path.join(file_path,valid_file), c=args.c)
 			gl = gl.to(device)
 			feats = feats.to(device)
 			labels = labels.to(device)
@@ -151,20 +152,22 @@ def evaluate(model, file_path='valid_query/', save_path=None, save=False):
 			output = model(gl, feats)
 
 		elif args.model == 'ffn':
-			feats, labels = loader.load_graph(file_path=file_path + valid_file)
+			feats, labels = loader.load_graph(file_path=os.path.join(file_path,valid_file), c=args.c)
 			feats = feats.to(device)
 			labels = labels.to(device)
 			optimizer.zero_grad()
 			output = model(feats)
 
+		# loss = Myloss(output, labels)
 		loss = Myloss(output, labels)
+
 		f1_valid = f1_score(output, labels)
 
 		loss_val += loss.item()/len(valid_list)
 		f1_val += f1_valid/len(valid_list)
 
 		if save:
-			save_prediction(output, 0.5, file_path + valid_file, save_path, device)
+			save_prediction(output, 0.5, os.path.join(file_path,valid_file), save_path, device)
 
 	return loss_val, f1_val
 
@@ -206,14 +209,14 @@ save_dir = os.path.split(args.model_save_path)[0]
 if not os.path.exists(save_dir):
 	os.makedirs(save_dir, exist_ok=True)
 
-torch.save({
-	'epoch':epoch,
-	'model_state_dict':model.state_dict(),
-	'optimizer_state_dict':optimizer.state_dict(),
-	'loss':Myloss}, args.model_save_path)
+# torch.save({
+# 	'epoch':epoch,
+# 	'model_state_dict':model.state_dict(),
+# 	'optimizer_state_dict':optimizer.state_dict(),
+# 	'loss1':Myloss}, args.model_save_path)
 
 print('>> [{}] Inference and save the results.'.format(datetime.datetime.now()))
 if not os.path.exists(args.inference_save_path):
 	os.makedirs(args.inference_save_path, exist_ok=True)
-_,_ = evaluate(model, file_path='valid_query/', save_path=args.inference_save_path, save=True)
+# _,_ = evaluate(model, file_path='valid_query/', save_path=args.inference_save_path, save=True)
 print(">> Total time elapsed: {:.4f}s".format(time.time() - t_total))

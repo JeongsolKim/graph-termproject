@@ -16,7 +16,7 @@ class LineGraphLoader():
 	def __init__(self):
 		pass
 
-	def load_graph(self, file_path='./train/train_000.txt'):
+	def load_graph(self, file_path='./train/train_000.txt', c=1.0):
 		# Read all lines from one query
 		with open(file_path, 'r') as f:
 			lines = f.readlines()
@@ -48,7 +48,7 @@ class LineGraphLoader():
 		g.add_edges([edge[0] for edge in edge_dict], [edge[1] for edge in edge_dict])
 		
 		# ----------- Extract featrues and add to graph ----------- #
-		feats = self.extract_features(file_path, node_dict, edge_dict, c=1.0)
+		feats = self.extract_features(file_path, node_dict, edge_dict, c)
 		feats = torch.Tensor(feats)
 		g.edata['feat'] = feats
 
@@ -61,7 +61,7 @@ class LineGraphLoader():
 
 		return gl, feats, label
 
-	def extract_features(self, file_path, node_dict, edge_dict, c=1.0):
+	def extract_features(self, file_path, node_dict, edge_dict, c):
 		with open(file_path, 'r') as f:
 			lines = f.readlines()
 		
@@ -219,7 +219,7 @@ class ModifiedLineGraphLoader():
 
 		return feats
 
-	def extract_features(self, file_path, node_dict, c=1.0):
+	def extract_features(self, file_path, node_dict, c):
 		'''
 		Extract feature that reflects the pattern and connectivity from the one TCP connection history
 		Input: file_path (str), node_dict (dictionary)
@@ -235,7 +235,7 @@ class ModifiedLineGraphLoader():
 		
 		return feats
 
-	def load_graph(self, file_path, mode='proposed'):
+	def load_graph(self, file_path, mode='proposed', c=1.0):
 		node_dict, edge_list_H1, edge_list_H2 = self.query_to_modified_line_graphs(file_path)
 		
 		if mode=='proposed':
@@ -243,7 +243,7 @@ class ModifiedLineGraphLoader():
 		else:
 			(H1, H2) = (None, None)
 
-		feats = self.extract_features(file_path, node_dict, c=1.0)
+		feats = self.extract_features(file_path, node_dict, c)
 		label = answer_to_tensor(file_path)
 
 		# convert to torch.Tensor
@@ -256,9 +256,9 @@ class FeatureLabelLoader(ModifiedLineGraphLoader):
 		super(FeatureLabelLoader, self).__init__()
 		pass
 	
-	def load_graph(self, file_path):
+	def load_graph(self, file_path, c=1.0):
 		node_dict, _ , _ = self.query_to_modified_line_graphs(file_path)
-		feats = self.extract_features(file_path, node_dict, c=1.0)
+		feats = self.extract_features(file_path, node_dict, c)
 		label = answer_to_tensor(file_path)
 
 		# convert to torch.Tensor

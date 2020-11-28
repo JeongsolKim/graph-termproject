@@ -16,16 +16,14 @@ class SimpleFFN(nn.Module):
 		x = F.relu(self.dense2(x))
 		x = self.dense3(x)
 
-		x = torch.sigmoid(torch.mean(x, dim=0, keepdim=True))
-
-		return x
-
+		x = torch.mean(x, dim=0, keepdim=True)
+		return torch.sigmoid(x)
 
 class MyModel(nn.Module):
-	def __init__(self, in_dim, hidden_dim, num_classes, aggregator='mean', activation='sigmoid'):
+	def __init__(self, in_dim, hidden_dim, num_classes, aggregator='mean'):
 		super(MyModel, self).__init__()
 		# We make two GNN model for H1 and H2.
-		self.SAGE1 = GraphSage(in_dim, hidden_dim, num_classes, aggregator, None)
+		self.SAGE1 = GraphSage(in_dim, hidden_dim, num_classes, aggregator, 'relu')
 		self.SAGE2 = GraphSage(in_dim, hidden_dim, num_classes, aggregator, None)
 
 	def forward(self, H1, H2, feats):
@@ -37,7 +35,7 @@ class MyModel(nn.Module):
 
 
 class MyModel_line(nn.Module):
-	def __init__(self, in_dim, hidden_dim, num_classes, aggregator='mean', activation='sigmoid'):
+	def __init__(self, in_dim, hidden_dim, num_classes, aggregator='mean'):
 		super(MyModel_line, self).__init__()
 		# This model is GraphSage on line-graph.
 		self.SAGE = GraphSage(in_dim, hidden_dim, num_classes, aggregator, None)
@@ -54,13 +52,13 @@ class GraphSage(nn.Module):
 		self.sageconv1 = dglnn.SAGEConv(in_feats=in_dim,
 										out_feats=hidden_dim,
 										aggregator_type=aggregator,
-										feat_drop=0,
-										bias=False)
+										feat_drop=0.2,
+										bias=True)
 		self.sageconv2 = dglnn.SAGEConv(in_feats=hidden_dim,
 										out_feats=hidden_dim,
 										aggregator_type=aggregator,
-										feat_drop=0,
-										bias=False)
+										feat_drop=0.2,
+										bias=True)
 		self.linear = nn.Linear(hidden_dim, out_dim, bias=False)
 		self.activation = activation
 
@@ -76,6 +74,8 @@ class GraphSage(nn.Module):
 
 			if self.activation == 'relu':
 				return F.relu(graph_rep)
+			elif self.activation == 'leakyrelu':
+				return F.leaky_relu(graph_rep)
 			elif self.activation == 'sigmoid':
 				return torch.sigmoid(graph_rep)
 			elif self.activation == 'softmax':
