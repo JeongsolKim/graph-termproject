@@ -123,89 +123,6 @@ def answer_to_tensor(file_path):
 
 	return ans_binary
 
-def f1_score(output, label, threshold=0.5):
-	# We only count the attack types while ignoring the benign.
-	# I designed the prediction and label vector to indicate the benign as the first entry.
-	# Thus, to calculate F1 score, slicing the vector from the second entry to the end.
-	attack_pred = output[0, 1:].detach().cpu().numpy()
-	attack_label = label[0, 1:].detach().cpu().numpy()
-	
-	# Precision
-	true_predict = 0
-	attack_pred_positive = np.where(attack_pred>threshold)[0]
-	
-	for pred in attack_pred_positive:
-		if attack_label[pred] > threshold:
-			true_predict += 1
-	prec = (1+true_predict)/(1+len(attack_pred_positive))
-
-	# Recall
-	predicted = 0
-	attack_label_positive = np.where(attack_label>threshold)[0]
-	for label in attack_label_positive:
-		if attack_pred[label] > threshold:
-			predicted += 1
-	recall = (1+predicted)/(1+len(attack_label_positive))
-
-	# F1 score
-	f1 = 2*prec*recall/(prec+recall)
-	# print(attack_pred_positive, attack_label_positive, f1)
-	return f1
-
-def total_f1_score(answer_dir, pred_dir):
-	# Initialize
-	A = []  # the set of networks containing TCP attacks
-	B = []  # the set of networks without any TCP attacks
-
-	# Get sorted file list
-	answer_files = sorted(os.listdir(answer_dir))
-	pred_files = sorted(os.listdir(pred_dir))
-
-	# Load attack dictionary
-	att_dict = load_attackDict()
-
-	# Load file pair and convert to binary vector
-	files = zip(answer_files, pred_files)
-	for ans_f, pred_f in files:
-		attack_ans = []
-		attack_pred = []
-
-		with open(answer_dir + ans_f, 'r') as f:
-			ans_lines = f.readlines()
-		with open(pred_dir + pred_f, 'r') as f:
-			pred_lines = f.readlines()
-
-		if ans_lines == []:
-			ans_lines = ['-']
-			net_type = 'B'
-		else:
-			net_type = 'A'
-
-		if pred_lines == []:
-			pred_lines = ['-']
-
-		for ans in ans_lines[0].split('\t'):
-			attack_ans.append(ans.strip())
-		for pred in pred_lines[0].split('\t'):
-			attack_pred.append(pred.strip())
-		
-		ans_binary = convert_to_binary_vec(attack_ans, att_dict)
-		pred_binary = convert_to_binary_vec(attack_pred, att_dict)
-
-		# f1-score 
-		f1 = f1_score(pred_binary, ans_binary)
-		if net_type == 'A':
-			A.append(f1)
-		elif net_type == 'B':
-			B.append(f1)
-
-	# average
-	print('F1 for the non-attack networks: {}'.format(np.mean(B)))
-	print('F1 for the attack networks: {}'.format(np.mean(A)))
-
-	total_f1 = 0.5*(np.mean(B) + np.mean(A))
-	return total_f1
-
 def visualize(labels, g):
 	pos = nx.spring_layout(g, seed=1)
 	plt.figure(figsize=(8, 8))
@@ -230,7 +147,7 @@ def save_prediction(output, threshold, file_path, save_path, device):
 			attack_list += [att_type for att_type, att_id in attack_dict.items() if att_id == pred_id]
 
 	# save
-	save_name = save_path+file_path.split('.txt')[0] + '_prediction.txt'
+	save_name = save_path + os.path.split(file_path)[-1].split('.txt')[0] + '_prediction.txt'
 	if not os.path.exists(os.path.split(save_name)[0]):
 		os.mkdir(os.path.split(save_name)[0])
 		

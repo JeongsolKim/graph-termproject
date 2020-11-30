@@ -2,14 +2,12 @@ import dgl
 import torch
 import os
 import warnings
-import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 from graphloaders import *
 from model import *
 from utils import *
 from sklearn import metrics
-
 
 def benign_process(y_pred):
 	# Benign connection could exist in the prediction with other attacks.
@@ -27,7 +25,7 @@ def benign_process(y_pred):
 
 	return y_pred
 
-def save_roc_curve(y_true, y_pred, class_num, args):
+def save_roc_curve(y_true, y_pred, class_num, analyze_save_path):
 	attack_dict = load_attackDict()
 	# ROC curve
 	fpr = {}
@@ -37,13 +35,13 @@ def save_roc_curve(y_true, y_pred, class_num, args):
 		fpr[i], tpr[i], _ = metrics.roc_curve(y_true[:, i], y_pred[:, i])
 		roc_auc[i] = metrics.auc(fpr[i], tpr[i])
 
-	if not os.path.exists(args.analyze_save_path):
-		os.makedirs(args.analyze_save_path, exist_ok=True)
+	if not os.path.exists(analyze_save_path):
+		os.makedirs(analyze_save_path, exist_ok=True)
 
 	# Plot of a ROC curve for a specific class
 	for i in range(class_num):
 		attack_type = [att_type for att_type, att_id in attack_dict.items() if att_id==i][0]
-		save_path = os.path.join(args.analyze_save_path, 'class_{}: {}.png'.format(i+1, attack_type))
+		save_path = os.path.join(analyze_save_path, 'class_{}: {}.png'.format(i+1, attack_type))
 		plt.figure()
 		plt.plot(fpr[i], tpr[i], label='ROC curve (area = %0.2f)' % roc_auc[i])
 		plt.plot([0, 1], [0, 1], 'k--')
@@ -55,82 +53,163 @@ def save_roc_curve(y_true, y_pred, class_num, args):
 		plt.legend(loc="lower right")
 		plt.savefig(save_path)
 
-warnings.filterwarnings('ignore')
+def f1_score(output, label, threshold=0.5):
+		# We only count the attack types while ignoring the benign.
+	# I designed the prediction and label vector to indicate the benign as the first entry.
+	# Thus, to calculate F1 score, slicing the vector from the second entry to the end.
+	attack_pred = output[0, 1:].detach().cpu().numpy()
+	attack_label = label[0, 1:].detach().cpu().numpy()
+	
+	# Precision
+	true_predict = 0
+	attack_pred_positive = np.where(attack_pred>threshold)[0]
+	
+	for pred in attack_pred_positive:
+		if attack_label[pred] > threshold:
+			true_predict += 1
+	prec = (1+true_predict)/(1+len(attack_pred_positive))
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--no-cuda', action='store_true', default=False, help='Disables CUDA training.')
-parser.add_argument('--model', type=str, default='proposed', help="One of 'ffn', 'sage_on_line', 'proposed'.")
-parser.add_argument('--gpu', type=int, default=0, help='Number of GPU to use for training.')
-parser.add_argument('--c', type=float, default=1.0, help='Scale constant for port number used in extracting edge features.')
-parser.add_argument('--model_load_path', type=str, default='./model/proposed/model.pt')
-parser.add_argument('--analyze_save_path', type=str, default='./analyze/proposed/')
+	# Recall
+	predicted = 0
+	attack_label_positive = np.where(attack_label>threshold)[0]
+	for label in attack_label_positive:
+		if attack_pred[label] > threshold:
+			predicted += 1
+	recall = (1+predicted)/(1+len(attack_label_positive))
 
-args = parser.parse_args()
-args.cuda = not args.no_cuda and torch.cuda.is_available()
+	# F1 score
+	f1 = 2*prec*recall/(prec+recall)
+	# print(attack_pred_positive, attack_label_positive, f1)
+	return f1
 
-# Check the device
-if args.cuda:
-	gpu_num = args.gpu
-	device = 'cuda:{}'.format(gpu_num)
-else:
-	device = 'cpu'
-print('\n>> Device: {}'.format(device))
+def total_f1_score(answer_dir, pred_dir):
+	# Initialize
+	A = []  # the set of networks containing TCP attacks
+	B = []  # the set of networks without any TCP attacks
 
-# Data loader and Model
-if args.model == 'ffn':
-	loader = FeatureLabelLoader()
-	model = SimpleFFN(in_feats=1800, nhid=256, num_classes=25).to(device)
-	print('>> Model: Two layers feed-forward network on features')
-elif args.model == 'sage_on_line':
-	loader = LineGraphLoader()
-	model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
-	print('>> Model: GraphSage on linegraph')
-elif args.model == 'proposed':
-	loader = ModifiedLineGraphLoader()
-	model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
-	print('>> Model: Two GraphSages on modified linegraph (proposed)')
+	# Get sorted file list
+	answer_files = sorted(os.listdir(answer_dir))
+	pred_files = sorted(os.listdir(pred_dir))
 
-# Load
-ckpt = torch.load(args.model_load_path)
-model.load_state_dict(ckpt['model_state_dict'])
-model.eval()
+	# Load attack dictionary
+	att_dict = load_attackDict()
 
-# Initialize
-class_num = 25
-valid_list = os.listdir('valid_query/')
-y_true = torch.tensor(np.zeros([len(valid_list), class_num])).to(device)
-y_pred = torch.tensor(np.zeros([len(valid_list), class_num])).to(device)
+	# Load file pair and convert to binary vector
+	files = zip(answer_files, pred_files)
+	for ans_f, pred_f in files:
+		attack_ans = []
+		attack_pred = []
 
-# Inference
-for i, valid_file in enumerate(valid_list):
-	if args.model == 'proposed':
-		H1, H2, feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file, c=args.c)
-		H1 = H1.to(device)
-		H2 = H2.to(device)
-		feats = feats.to(device)
-		output = model(H1, H2, feats)
-		labels = labels.to(device)
-		y_true[i, :] = labels
-		y_pred[i, :] = output
+		with open(os.path.join(answer_dir, ans_f), 'r') as f:
+			ans_lines = f.readlines()
+		with open(os.path.join(pred_dir, pred_f), 'r') as f:
+			pred_lines = f.readlines()
 
-	elif args.model == 'sage_on_line':
-		gl, feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file, c=args.c)
-		gl = gl.to(device)
-		feats = feats.to(device)
-		labels = labels.to(device)
-		output = model(gl, feats)
-		y_true[i, :] = labels
-		y_pred[i, :] = output
+		if ans_lines == []:
+			ans_lines = ['-']
+			net_type = 'B'
+		else:
+			net_type = 'A'
 
-	elif args.model == 'ffn':
-		feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file, c=args.c)
-		feats = feats.to(device)
-		labels = labels.to(device)
-		output = model(feats)
-		y_true[i, :] = labels
-		y_pred[i, :] = output
+		if pred_lines == []:
+			pred_lines = ['-']
 
-y_true = y_true.cpu().detach().numpy()
-y_pred = y_pred.cpu().detach().numpy()
-save_roc_curve(y_true, y_pred, class_num, args)
+		for ans in ans_lines[0].split('\t'):
+			attack_ans.append(ans.strip())
+		for pred in pred_lines[0].split('\t'):
+			attack_pred.append(pred.strip())
+		
+		ans_binary = convert_to_binary_vec(attack_ans, att_dict)
+		pred_binary = convert_to_binary_vec(attack_pred, att_dict)
 
+		# f1-score 
+		f1 = f1_score(pred_binary, ans_binary)
+		if net_type == 'A':
+			A.append(f1)
+		elif net_type == 'B':
+			B.append(f1)
+
+	# average
+	total_f1 = 0.5*(np.mean(B) + np.mean(A))
+
+	print('>> F1 score for the non-attack networks: {}'.format(np.mean(B)))
+	print('>> F1 score for the attack networks: {}'.format(np.mean(A)))
+	print('>> F1 score for the entire networks: {}'.format(total_f1))
+
+	return np.mean(B), np.mean(A), total_f1
+
+def get_auc_score(model, device, c, model_load_path, analyze_save_path):
+	warnings.filterwarnings('ignore')
+		
+	# Data loader and Model
+	if model == 'ffn':
+		loader = FeatureLabelLoader()
+		model = SimpleFFN(in_feats=1800, nhid=256, num_classes=25).to(device)
+	elif model == 'sage_on_line':
+		loader = LineGraphLoader()
+		model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
+	elif model == 'proposed':
+		loader = ModifiedLineGraphLoader()
+		model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
+
+	# Load
+	ckpt = torch.load(model_load_path)
+	model.load_state_dict(ckpt['model_state_dict'])
+	model.eval()
+
+	# Initialize
+	class_num = 25
+	valid_list = os.listdir('valid_query/')
+	y_true = torch.tensor(np.zeros([len(valid_list), class_num])).to(device)
+	y_pred = torch.tensor(np.zeros([len(valid_list), class_num])).to(device)
+
+	# Inference
+	for i, valid_file in enumerate(valid_list):
+		if model == 'proposed':
+			H1, H2, feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file, c=c)
+			H1 = H1.to(device)
+			H2 = H2.to(device)
+			feats = feats.to(device)
+			output = model(H1, H2, feats)
+			labels = labels.to(device)
+			y_true[i, :] = labels
+			y_pred[i, :] = output
+
+		elif model == 'sage_on_line':
+			gl, feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file, c=c)
+			gl = gl.to(device)
+			feats = feats.to(device)
+			labels = labels.to(device)
+			output = model(gl, feats)
+			y_true[i, :] = labels
+			y_pred[i, :] = output
+
+		elif model == 'ffn':
+			feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file, c=c)
+			feats = feats.to(device)
+			labels = labels.to(device)
+			output = model(feats)
+			y_true[i, :] = labels
+			y_pred[i, :] = output
+
+	y_true = y_true.cpu().detach().numpy()
+	y_pred = y_pred.cpu().detach().numpy()
+	return calculate_auc_score(y_true, y_pred, class_num, analyze_save_path)
+
+def calculate_auc_score(y_true, y_pred, class_num, analyze_save_path):
+	attack_dict = load_attackDict()
+
+	fpr = {}
+	tpr = {}
+	auc_score = np.zeros([class_num,])
+
+	for i in range(class_num):
+		fpr[i], tpr[i], _ = metrics.roc_curve(y_true[:, i], y_pred[:, i])
+		auc_score[i] = metrics.auc(fpr[i], tpr[i])
+
+	# print('>> Area Under Curve score: \n', auc_score)
+
+	return auc_score
+	
+	
+	

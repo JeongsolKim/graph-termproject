@@ -10,6 +10,7 @@ import tqdm
 from graphloaders import *
 from model import *
 from utils import *
+from analyze import *
 
 warnings.filterwarnings('ignore')
 
@@ -23,8 +24,9 @@ parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rat
 parser.add_argument('--sample_ratio', type=float, default=0.7, help='Fraction of used training data for each epoch (<=1).')
 parser.add_argument('--c', type=float, default=1.0, help='Scale constant for port number used in extracting edge features.')
 parser.add_argument('--plot', type=bool, default=False, help='Draw learning curve after training.')
-parser.add_argument('--model_save_path', type=str, default='./model/proposed/model.pt', help='Save file name for the trained model. (.pt)')
-parser.add_argument('--inference_save_path', type=str, default='./prediction/proposed/', help='Directory for saving the inference results.')
+parser.add_argument('--model_save_path', type=str, default='./model/', help='Directory for saving the trained model.')
+parser.add_argument('--inference_save_path', type=str, default='./prediction/', help='Directory for saving the inference results.')
+parser.add_argument('--analyze_save_path', type=str, default='./analyze/', help='Directory for saving the analyzed results.')
 
 args = parser.parse_args()
 
@@ -35,6 +37,16 @@ assert args.model in ['ffn', 'sage_on_line', 'proposed'], \
 assert args.sample_ratio <=1 and args.sample_ratio>0,\
 	'Sample ratio should be in (0, 1], not {}.'.format(args.sample_ratio)
 
+args.model_save_path = args.model_save_path + args.model + '/model.pt'
+args.inference_save_path = args.inference_save_path + args.model + '/'
+args.analyze_save_path = args.analyze_save_path + args.model + '/'
+
+if not os.path.exists(args.inference_save_path):
+	os.makedirs(args.inference_save_path, exist_ok=True)
+
+if not os.path.exists(args.analyze_save_path):
+	os.makedirs(args.analyze_save_path, exist_ok=True)
+	
 # Check the device
 if args.cuda:
 	gpu_num = args.gpu
@@ -81,7 +93,7 @@ def train(epoch):
 	f1 = 0.0
 	for train_file in train_list:
 		if args.model == 'proposed':
-			H1, H2, feats, labels = loader.load_graph(file_path='train/'+train_file, c=args.c)
+			H1, H2, feats, labels = loader.load_graph(file_path=os.path.join('./train/', train_file), c=args.c)
 			H1 = H1.to(device)
 			H2 = H2.to(device)
 			feats = feats.to(device)
@@ -90,7 +102,7 @@ def train(epoch):
 			output = model(H1, H2, feats)
 		
 		elif args.model == 'sage_on_line':
-			gl, feats, labels = loader.load_graph(file_path='train/'+train_file, c=args.c)
+			gl, feats, labels = loader.load_graph(file_path=os.path.join('./train/', train_file), c=args.c)
 			gl = gl.to(device)
 			feats = feats.to(device)
 			labels = labels.to(device)
@@ -98,7 +110,7 @@ def train(epoch):
 			output = model(gl, feats)
 
 		elif args.model == 'ffn':
-			feats, labels = loader.load_graph(file_path='train/'+train_file, c=args.c)
+			feats, labels = loader.load_graph(file_path=os.path.join('./train/', train_file), c=args.c)
 			feats = feats.to(device)
 			labels = labels.to(device)
 			optimizer.zero_grad()
@@ -126,7 +138,7 @@ def train(epoch):
 	return [loss_train, loss_val], [f1_train, f1_val]
 
 
-def evaluate(model, file_path='valid_query/', save_path=None, save=False):
+def evaluate(model, file_path='./valid_query/', save_path=None, save=False):
 	model.eval()
 
 	valid_list = os.listdir(file_path)
@@ -204,19 +216,32 @@ if args.plot:
 
 print('>> [{}] Optimization Finished!'.format(datetime.datetime.now()))
 
-print('\n>> [{}] Save the model checkpoint.'.format(datetime.datetime.now()))
+print('>> [{}] Save the model checkpoint.'.format(datetime.datetime.now()))
 save_dir = os.path.split(args.model_save_path)[0]
 if not os.path.exists(save_dir):
 	os.makedirs(save_dir, exist_ok=True)
 
-# torch.save({
-# 	'epoch':epoch,
-# 	'model_state_dict':model.state_dict(),
-# 	'optimizer_state_dict':optimizer.state_dict(),
-# 	'loss1':Myloss}, args.model_save_path)
+torch.save({
+	'epoch':epoch,
+	'model_state_dict':model.state_dict(),
+	'optimizer_state_dict':optimizer.state_dict(),
+	'loss1':Myloss}, args.model_save_path)
 
-print('>> [{}] Inference and save the results.'.format(datetime.datetime.now()))
-if not os.path.exists(args.inference_save_path):
-	os.makedirs(args.inference_save_path, exist_ok=True)
-# _,_ = evaluate(model, file_path='valid_query/', save_path=args.inference_save_path, save=True)
+print('>> [{}] Inference and analyze the model performance.'.format(datetime.datetime.now()))
+
+
+# Inference result save
+_, _ = evaluate(model, file_path='./valid_query/', save_path=args.inference_save_path, save=True)
+
+# Calculate f1-score and auc score for each class and save
+non_att_f1, att_f1, total_f1 = total_f1_score('./valid_answer/', args.inference_save_path)
+file_path = os.path.join(args.analyze_save_path, 'f1_score.txt')
+with open(file_path, 'a') as f:
+	f.write('{}\t{}\t{}\n'.format(non_att_f1, att_f1, total_f1))
+
+auc_score = get_auc_score(args.model, device, args.c, args.model_save_path, args.analyze_save_path)
+with open(os.path.join(args.analyze_save_path, 'auc_score.txt'), 'a') as f:
+	auc_str = '\t'.join([str(x) for x in auc_score])+'\n'
+	f.write(auc_str)
+
 print(">> Total time elapsed: {:.4f}s".format(time.time() - t_total))
