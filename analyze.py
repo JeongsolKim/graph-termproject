@@ -138,19 +138,19 @@ def total_f1_score(answer_dir, pred_dir):
 
 	return np.mean(B), np.mean(A), total_f1
 
-def get_auc_score(model, device, c, model_load_path, analyze_save_path):
+def get_auc_score(model_name, device, c, model_load_path, analyze_save_path):
 	warnings.filterwarnings('ignore')
 		
 	# Data loader and Model
-	if model == 'ffn':
+	if model_name == 'ffn':
 		loader = FeatureLabelLoader()
 		model = SimpleFFN(in_feats=1800, nhid=256, num_classes=25).to(device)
-	elif model == 'sage_on_line':
+	elif model_name == 'sage_on_line':
 		loader = LineGraphLoader()
-		model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
-	elif model == 'proposed':
+		model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='lstm').to(device)
+	elif model_name == 'proposed':
 		loader = ModifiedLineGraphLoader()
-		model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
+		model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='lstm').to(device)
 
 	# Load
 	ckpt = torch.load(model_load_path)
@@ -159,14 +159,15 @@ def get_auc_score(model, device, c, model_load_path, analyze_save_path):
 
 	# Initialize
 	class_num = 25
-	valid_list = os.listdir('valid_query/')
+	file_path= './valid_query/'
+	valid_list = os.listdir(file_path)
 	y_true = torch.tensor(np.zeros([len(valid_list), class_num])).to(device)
 	y_pred = torch.tensor(np.zeros([len(valid_list), class_num])).to(device)
 
 	# Inference
 	for i, valid_file in enumerate(valid_list):
-		if model == 'proposed':
-			H1, H2, feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file, c=c)
+		if model_name == 'proposed':
+			H1, H2, feats, labels = loader.load_graph(file_path= os.path.join(file_path,valid_file), c=c)
 			H1 = H1.to(device)
 			H2 = H2.to(device)
 			feats = feats.to(device)
@@ -175,8 +176,8 @@ def get_auc_score(model, device, c, model_load_path, analyze_save_path):
 			y_true[i, :] = labels
 			y_pred[i, :] = output
 
-		elif model == 'sage_on_line':
-			gl, feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file, c=c)
+		elif model_name == 'sage_on_line':
+			gl, feats, labels = loader.load_graph(file_path= os.path.join(file_path,valid_file), c=c)
 			gl = gl.to(device)
 			feats = feats.to(device)
 			labels = labels.to(device)
@@ -184,21 +185,22 @@ def get_auc_score(model, device, c, model_load_path, analyze_save_path):
 			y_true[i, :] = labels
 			y_pred[i, :] = output
 
-		elif model == 'ffn':
-			feats, labels = loader.load_graph(file_path= 'valid_query/' + valid_file, c=c)
+		elif model_name == 'ffn':
+			feats, labels = loader.load_graph(file_path= os.path.join(file_path,valid_file), c=c)
 			feats = feats.to(device)
 			labels = labels.to(device)
 			output = model(feats)
 			y_true[i, :] = labels
 			y_pred[i, :] = output
+		else:
+			raise NameError
 
 	y_true = y_true.cpu().detach().numpy()
 	y_pred = y_pred.cpu().detach().numpy()
-	return calculate_auc_score(y_true, y_pred, class_num, analyze_save_path)
+	return calculate_auc_score(y_true, y_pred, class_num)
 
-def calculate_auc_score(y_true, y_pred, class_num, analyze_save_path):
+def calculate_auc_score(y_true, y_pred, class_num):
 	attack_dict = load_attackDict()
-
 	fpr = {}
 	tpr = {}
 	auc_score = np.zeros([class_num,])

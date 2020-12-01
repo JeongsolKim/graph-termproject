@@ -1,24 +1,24 @@
 from graphloaders import *
 from utils import *
 from model import *
+from gradCAM import *
 import time
 import numpy as np
 import torch
 
-loader = LineGraphLoader()
-gl, feats, label = loader.load_graph()
+# file_path = './analyze/proposed/auc_score.txt'
+# auc = np.zeros([25, 10])
 
-# model = MyModel_line(in_dim=feats.size()[-1],
-# 					hidden_dim=64,
-# 					num_classes=label.size()[-1])
+# with open(file_path, 'r') as f:
+#     lines = f.readlines()
+#     for i, line in enumerate(lines):
+#         scores = list(map(lambda x: float(x.strip('\n')), line.split('\t')))
+#         auc[:,i] = np.array(scores)
 
-# output = model(gl, feats)
-# print(output)
-# print(label)
-# score = f1_score(output, label)
-# print(score)
+# auc_mean = np.mean(auc, 1)
+# auc_std = np.std(auc, 1)
+    
+# np.savetxt('./auc_mean.txt', auc_mean)
+# np.savetxt('./auc_std.txt', auc_std)
 
-# forward_and_save_prediction(model_instance=model, threshold=0.5, file_path='train/train_001.txt', device='cpu', mode='proposed')
-
-f1 = total_f1_score('./valid_answer/', './prediction/relu_bias_c100/valid_query/')
-print(f1)
+gradcam('train/train_824.txt','proposed','cuda:0', 1.0, './model/proposed/model.pt')

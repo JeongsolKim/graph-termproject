@@ -4,6 +4,9 @@ import numpy as np
 import torch
 import os
 
+def to_np(tensor):
+    return tensor.cpu().detach().numpy()
+
 def add_to_dict(ref_dict, key, value:list=None):
 	if not value:
 		if ref_dict.get(key):
@@ -174,7 +177,3 @@ def data_distribution(file_dir='./train', num_classes=25):
 			dist[attack_type] += 1
 
 	return dist
-
-
-
-		
