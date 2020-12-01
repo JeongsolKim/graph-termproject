@@ -7,6 +7,9 @@ import os
 def to_np(tensor):
     return tensor.cpu().detach().numpy()
 
+def find_keys_by_value(dictionary, value):
+	return [x for x in dictionary if dictionary[x]==value]
+
 def add_to_dict(ref_dict, key, value:list=None):
 	if not value:
 		if ref_dict.get(key):

@@ -147,10 +147,10 @@ def get_auc_score(model_name, device, c, model_load_path, analyze_save_path):
 		model = SimpleFFN(in_feats=1800, nhid=256, num_classes=25).to(device)
 	elif model_name == 'sage_on_line':
 		loader = LineGraphLoader()
-		model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='lstm').to(device)
+		model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
 	elif model_name == 'proposed':
 		loader = ModifiedLineGraphLoader()
-		model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='lstm').to(device)
+		model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
 
 	# Load
 	ckpt = torch.load(model_load_path)

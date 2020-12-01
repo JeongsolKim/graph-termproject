@@ -62,11 +62,11 @@ if args.model == 'ffn':
 	print('>> Model: Two layers feed-forward network on features')
 elif args.model == 'sage_on_line':
 	loader = LineGraphLoader()
-	model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='lstm').to(device)
+	model = MyModel_line(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
 	print('>> Model: GraphSage on linegraph')
 elif args.model == 'proposed':
 	loader = ModifiedLineGraphLoader()
-	model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='lstm').to(device)
+	model = MyModel(in_dim=1800, hidden_dim=256, num_classes=25, aggregator='mean').to(device)
 	print('>> Model: Two GraphSages on modified linegraph (proposed)')
 
 # Load optimizer

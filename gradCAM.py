@@ -4,12 +4,13 @@ import torch.nn.functional as F
 import os
 import warnings
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 from graphloaders import *
 from model import *
 from utils import *
 
-def gradcam(file_path, model_name, device, c, model_load_path):
+def get_output_with_label(file_path, model_name, device, c, model_load_path):
 	warnings.filterwarnings('ignore')
 		
 	# Data loader and Model
@@ -56,7 +57,19 @@ def gradcam(file_path, model_name, device, c, model_load_path):
 		output = model(feats)
 	else:
 		raise NameError
+
+	return feats, output, labels
+
+def gradcam(file_path, model_name, device, c, model_load_path):
+	att_dict = load_attackDict()
 	
+	feats, output, labels = get_output_with_label(file_path, model_name, device, c, model_load_path)
+	pred_att = [find_keys_by_value(att_dict, x)[0]+'({}'.format(x)+', %.4f)' %output[0, x] \
+		for x in np.where(to_np(output)>0.5)[1] if x>0]
+	label_att = [find_keys_by_value(att_dict, x)[0]+'({})'.format(x) \
+		for x in np.where(to_np(labels)>0.5)[1] if x>0]
+
+	title = 'Prediction : '+ ' / '.join(pred_att) + '\nLabel : '+' / '.join(label_att)
 
 	alpha_c = []
 	for i in range(output.size()[-1]):
@@ -66,8 +79,15 @@ def gradcam(file_path, model_name, device, c, model_load_path):
 	
 	cam = F.relu(torch.mm(alpha_c, feats.transpose(0,1)))
 	
-	plt.figure()
-	plt.imshow(to_np(cam), cmap='hot')
-	plt.colorbar()
+	fig, ax = plt.subplots()
+	im = plt.imshow(to_np(cam), cmap='hot', vmin=0, vmax=1)
+	divider = make_axes_locatable(ax)
+	cax = divider.new_vertical(size="50%", pad=0.3, pack_start=True)
+	fig.add_axes(cax)
+	fig.colorbar(im, cax=cax, orientation="horizontal")
 	plt.tight_layout()
-	plt.savefig('./test.png')
+	plt.savefig('./gradcam.png', bbox_inches='tight')
+
+	print('\n>> Prediction result')
+	print(title)
+	print('>> Grad-CAM image is saved.')
