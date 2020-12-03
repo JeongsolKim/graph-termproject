@@ -73,7 +73,7 @@ elif args.model == 'proposed':
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
 # Set loss
-Myloss = nn.BCELoss().to(device)
+Myloss = nn.BCELoss(reduction='sum').to(device)
 
 def train(epoch):
 	t = time.time()

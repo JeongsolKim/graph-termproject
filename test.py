@@ -6,7 +6,7 @@ import time
 import numpy as np
 import torch
 
-# file_path = './analyze/proposed/auc_score.txt'
+# file_path = './analyze/save_line_pool/sage_on_line/auc_score.txt'
 # auc = np.zeros([25, 10])
 
 # with open(file_path, 'r') as f:
@@ -21,4 +21,5 @@ import torch
 # np.savetxt('./auc_mean.txt', auc_mean)
 # np.savetxt('./auc_std.txt', auc_std)
 
-gradcam('test_query/test_query_080.txt','proposed','cuda:0', 1.0, './model/proposed/model.pt')
+# gradcam('train/train_732.txt', './model/proposed/model.pt',  'cuda:0')
+gradcam('valid_query/valid_query_078.txt', './model/proposed/model.pt',  'cuda:0')
