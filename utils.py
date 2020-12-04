@@ -153,7 +153,11 @@ def save_prediction(output, threshold, file_path, save_path, device):
 			attack_list += [att_type for att_type, att_id in attack_dict.items() if att_id == pred_id]
 
 	# save
-	save_name = save_path + os.path.split(file_path)[-1].split('.txt')[0] + '_prediction.txt'
+	if 'test' in file_path:
+		save_name = os.path.join(save_path, 'test_answer_'+os.path.split(file_path)[-1].split('_')[-1])
+	else:
+		save_name = os.path.join(save_path, os.path.split(file_path)[-1].split('.txt')[0] + '_prediction.txt')
+		
 	if not os.path.exists(os.path.split(save_name)[0]):
 		os.mkdir(os.path.split(save_name)[0])
 		
