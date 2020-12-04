@@ -54,7 +54,7 @@ def save_roc_curve(y_true, y_pred, class_num, analyze_save_path):
 		plt.savefig(save_path)
 
 def f1_score(output, label, threshold=0.5):
-		# We only count the attack types while ignoring the benign.
+	# We only count the attack types while ignoring the benign.
 	# I designed the prediction and label vector to indicate the benign as the first entry.
 	# Thus, to calculate F1 score, slicing the vector from the second entry to the end.
 	attack_pred = output[0, 1:].detach().cpu().numpy()
@@ -138,7 +138,7 @@ def total_f1_score(answer_dir, pred_dir):
 
 	return np.mean(B), np.mean(A), total_f1
 
-def get_auc_score(model_name, device, c, model_load_path, analyze_save_path):
+def get_auc_score(model_name, device, gamma, model_load_path, analyze_save_path):
 	warnings.filterwarnings('ignore')
 		
 	# Data loader and Model
@@ -167,7 +167,7 @@ def get_auc_score(model_name, device, c, model_load_path, analyze_save_path):
 	# Inference
 	for i, valid_file in enumerate(valid_list):
 		if model_name == 'proposed':
-			H1, H2, feats, labels = loader.load_graph(file_path= os.path.join(file_path,valid_file), c=c)
+			H1, H2, feats, labels = loader.load_graph(file_path= os.path.join(file_path,valid_file), gamma=gamma)
 			H1 = H1.to(device)
 			H2 = H2.to(device)
 			feats = feats.to(device)
@@ -177,7 +177,7 @@ def get_auc_score(model_name, device, c, model_load_path, analyze_save_path):
 			y_pred[i, :] = output
 
 		elif model_name == 'sage_on_line':
-			gl, feats, labels = loader.load_graph(file_path= os.path.join(file_path,valid_file), c=c)
+			gl, feats, labels = loader.load_graph(file_path= os.path.join(file_path,valid_file), gamma=gamma)
 			gl = gl.to(device)
 			feats = feats.to(device)
 			labels = labels.to(device)
@@ -186,7 +186,7 @@ def get_auc_score(model_name, device, c, model_load_path, analyze_save_path):
 			y_pred[i, :] = output
 
 		elif model_name == 'ffn':
-			feats, labels = loader.load_graph(file_path= os.path.join(file_path,valid_file), c=c)
+			feats, labels = loader.load_graph(file_path= os.path.join(file_path,valid_file), gamma=gamma)
 			feats = feats.to(device)
 			labels = labels.to(device)
 			output = model(feats)

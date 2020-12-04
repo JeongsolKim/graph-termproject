@@ -67,9 +67,10 @@ class GraphSage(nn.Module):
 		feats = F.relu(self.sageconv2(g, feats))
 		with g.local_scope():
 			g.ndata['feats'] = feats
-			# Read-out
+			# Read-out 
+			# 1. mean
 			graph_rep = dgl.mean_nodes(g, 'feats')
-			# Linear
+			# 2. Linear
 			graph_rep = self.linear(graph_rep)
 
 			if self.activation == 'relu':

@@ -10,7 +10,7 @@ from graphloaders import *
 from model import *
 from utils import *
 
-def get_output_with_label(file_path, model_load_path, device, c):
+def get_output_with_label(file_path, model_load_path, device, gamma):
 	warnings.filterwarnings('ignore')
 		
 	# Data loader and Model
@@ -27,7 +27,7 @@ def get_output_with_label(file_path, model_load_path, device, c):
 	Myloss = nn.BCELoss().to(device)
 
 	# Inference
-	H1, H2, feats, labels = loader.load_graph(file_path=file_path, c=c)
+	H1, H2, feats, labels = loader.load_graph(file_path=file_path, gamma=gamma)
 	H1 = H1.to(device)
 	H2 = H2.to(device)
 	feats = feats.to(device)
@@ -37,11 +37,11 @@ def get_output_with_label(file_path, model_load_path, device, c):
 
 	return feats, output, labels
 
-def gradcam(file_path, model_load_path, device, c=1.0):
+def gradcam(file_path, model_load_path, device, gamma=1.0):
 	att_dict = load_attackDict()
 	threshold = 0.5
 	
-	feats, output, labels = get_output_with_label(file_path, model_load_path, device, c)
+	feats, output, labels = get_output_with_label(file_path, model_load_path, device, gamma)
 	pred_att = [find_keys_by_value(att_dict, x)[0]+'({}'.format(x)+', %.4f)' %output[0, x] \
 		for x in np.where(to_np(output)>threshold)[1] if x>0]
 	label_att = [find_keys_by_value(att_dict, x)[0]+'({})'.format(x) \
@@ -71,9 +71,9 @@ def gradcam(file_path, model_load_path, device, c=1.0):
 	plt.savefig('responsible_connections.png')
 	plt.close()
 
-	# Draw head-map
+	# Draw heat-map
 	fig, ax = plt.subplots()
-	im = plt.imshow(to_np(cam), cmap='hot')#, vmin=0, vmax=1)
+	im = plt.imshow(to_np(cam), cmap='hot')
 
 	for x,y in zip(most_responsible_connection, pred_ids):
 		plt.plot(x, y ,'bo', markersize=2)

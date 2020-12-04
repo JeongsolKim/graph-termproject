@@ -16,7 +16,7 @@ class LineGraphLoader():
 	def __init__(self):
 		pass
 
-	def load_graph(self, file_path='./train/train_000.txt', c=1.0):
+	def load_graph(self, file_path='./train/train_000.txt', gamma=1.0):
 		# Read all lines from one query
 		with open(file_path, 'r') as f:
 			lines = f.readlines()
@@ -24,7 +24,6 @@ class LineGraphLoader():
 		# ----------- NODE CREATE ----------- #
 		# Both graphs have the same nodes that are correspond to each TCP connection
 		# node_dict = {(src, dst): mapped_id} / keys: connection between two edges, values: continuously ordered integers (0, 1, 2, ...)
-		# edge_list = [(src as mapped_id, dst as mapped_id)] / list of tuples. 
 
 		node_dict = {}
 		edge_dict = {}
@@ -48,7 +47,7 @@ class LineGraphLoader():
 		g.add_edges([edge[0] for edge in edge_dict], [edge[1] for edge in edge_dict])
 		
 		# ----------- Extract featrues and add to graph ----------- #
-		feats = self.extract_features(file_path, node_dict, edge_dict, c)
+		feats = self.extract_features(file_path, node_dict, edge_dict, gamma)
 		feats = torch.Tensor(feats)
 		g.edata['feat'] = feats
 
@@ -61,28 +60,23 @@ class LineGraphLoader():
 
 		return gl, feats, label
 
-	def extract_features(self, file_path, node_dict, edge_dict, c):
+	def extract_features(self, file_path, node_dict, edge_dict, gamma):
 		with open(file_path, 'r') as f:
 			lines = f.readlines()
 		
 		edge_num = len(edge_dict)
 		edge_feats = np.zeros((edge_num, 1800))
 		for line in lines:
-			edge_feats = self.line_to_feature(line, node_dict, edge_dict, edge_feats, c)
+			edge_feats = self.line_to_feature(line, node_dict, edge_dict, edge_feats, gamma)
 		
 		return edge_feats
 
-	def line_to_feature(self, line:str, node_dict:dict, edge_dict:dict, feats:np.array, c):
-	    '''
-	    Fill the feature matrix with proper processing.
-	    Input: line (str), edge_dict (dictinary), feats (numpy array)
-	    Output: feats (numpy array)
-	    '''
+	def line_to_feature(self, line:str, node_dict:dict, edge_dict:dict, feats:np.array, gamma):
 
 	    # Split the given line into src, dst, port, time
 	    infos = list(map(lambda x:int(x), line.split('\t')[0:4]))
 
-	    # Convert (src, dst) into node_id which is used in H1 and H2.
+	    # convert to edge_id (actually, node_id in the line graph)
 	    edge = (node_dict[infos[0]], node_dict[infos[1]])
 	    edge_id = edge_dict[edge]
 
@@ -90,8 +84,8 @@ class LineGraphLoader():
 	    port_num = infos[2]
 	    time_point = infos[3]
 
-	    # port number normalization: max 65535 / min 0 -> max 100 / min 0, (scale = order of 1e-3)
-	    rescale_port = port_num * c/65535.0
+	    # port number normalization: max 65535 / min 0 -> max gamma / min 0
+	    rescale_port = port_num * gamma/65535.0
 
 	    feats[edge_id, time_point] += rescale_port
 
@@ -194,7 +188,7 @@ class ModifiedLineGraphLoader():
 
 		return H1, H2
 
-	def line_to_feature(self, line:str, node_dict:dict, feats:np.array, c):
+	def line_to_feature(self, line:str, node_dict:dict, feats:np.array, gamma):
 		'''
 		Fill the feature matrix with proper processing.
 		Input: line (str), node_dict (dictionary), feats (numpy array)
@@ -212,14 +206,14 @@ class ModifiedLineGraphLoader():
 		port_num = infos[2]
 		time_point = infos[3]
 
-		# port number normalization: max 65535 / min 0 -> max 100 / min 0, (scale = order of 1e-3)
-		rescale_port = port_num * c/65535.0
+		# port number normalization: max 65535 / min 0 -> max gamma / min 0
+		rescale_port = port_num * gamma/65535.0
 
 		feats[node_id, time_point] += rescale_port
 
 		return feats
 
-	def extract_features(self, file_path, node_dict, c):
+	def extract_features(self, file_path, node_dict, gamma):
 		'''
 		Extract feature that reflects the pattern and connectivity from the one TCP connection history
 		Input: file_path (str), node_dict (dictionary)
@@ -231,11 +225,11 @@ class ModifiedLineGraphLoader():
 		node_num = len(node_dict)
 		feats = np.zeros((node_num, 1800))
 		for line in lines:
-			feats = self.line_to_feature(line, node_dict, feats, c)
+			feats = self.line_to_feature(line, node_dict, feats, gamma)
 		
 		return feats
 
-	def load_graph(self, file_path, mode='proposed', c=1.0):
+	def load_graph(self, file_path, mode='proposed', gamma=1.0):
 		node_dict, edge_list_H1, edge_list_H2 = self.query_to_modified_line_graphs(file_path)
 		
 		if mode=='proposed':
@@ -243,7 +237,7 @@ class ModifiedLineGraphLoader():
 		else:
 			(H1, H2) = (None, None)
 
-		feats = self.extract_features(file_path, node_dict, c)
+		feats = self.extract_features(file_path, node_dict, gamma)
 		label = answer_to_tensor(file_path)
 
 		# convert to torch.Tensor
@@ -256,9 +250,9 @@ class FeatureLabelLoader(ModifiedLineGraphLoader):
 		super(FeatureLabelLoader, self).__init__()
 		pass
 	
-	def load_graph(self, file_path, c=1.0):
+	def load_graph(self, file_path, gamma=1.0):
 		node_dict, _ , _ = self.query_to_modified_line_graphs(file_path)
-		feats = self.extract_features(file_path, node_dict, c)
+		feats = self.extract_features(file_path, node_dict, gamma)
 		label = answer_to_tensor(file_path)
 
 		# convert to torch.Tensor
