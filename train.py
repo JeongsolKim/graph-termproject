@@ -233,7 +233,10 @@ _, _ = evaluate(model, file_path='./valid_query/', save_path=args.inference_save
 print('>> [{}] Analysis using f1 score, auc score and GRAD-CAM.'.format(datetime.datetime.now()))
 
 # GRAD-CAM save
-gradcam('valid_query/valid_query_128.txt', './model/proposed/model.pt',  'cuda:0')
+if args.model == 'proposed':
+	gradcam('valid_query/valid_query_128.txt', args.model_save_path,  device)
+else:
+    print('>> The GRAD-CAM is only for the proposed method. Skip this part.')
 
 # Calculate f1-score and auc score for each class and save
 non_att_f1, att_f1, total_f1 = total_f1_score('./valid_answer/', args.inference_save_path)
