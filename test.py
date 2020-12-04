@@ -21,5 +21,5 @@ import torch
 # np.savetxt('./auc_mean.txt', auc_mean)
 # np.savetxt('./auc_std.txt', auc_std)
 
-gradcam('train/train_732.txt', './model/proposed/model.pt',  'cuda:0')
-# gradcam('valid_query/valid_query_101.txt', './model/proposed/model.pt',  'cuda:0')
+# gradcam('train/train_732.txt', './model/proposed/model.pt',  'cuda:0')
+gradcam('valid_query/valid_query_143.txt', './model/proposed/model.pt',  'cuda:0')

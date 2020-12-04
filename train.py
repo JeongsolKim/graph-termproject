@@ -11,6 +11,7 @@ from graphloaders import *
 from model import *
 from utils import *
 from analyze import *
+from gradCAM import *
 
 warnings.filterwarnings('ignore')
 
@@ -46,6 +47,8 @@ if not os.path.exists(args.inference_save_path):
 	os.makedirs(args.inference_save_path, exist_ok=True)
 if not os.path.exists(args.analyze_save_path):
 	os.makedirs(args.analyze_save_path, exist_ok=True)
+if not os.path.exists('./test_answer/'):
+	os.makedirs('./test_answer/', exist_ok=True)
 	
 # Check the device
 if args.cuda:
@@ -216,17 +219,21 @@ save_dir = os.path.split(args.model_save_path)[0]
 if not os.path.exists(save_dir):
 	os.makedirs(save_dir, exist_ok=True)
 
-# torch.save({
-# 	'epoch':epoch,
-# 	'model_state_dict':model.state_dict(),
-# 	'optimizer_state_dict':optimizer.state_dict(),
-# 	'loss1':Myloss}, args.model_save_path)
+torch.save({
+	'epoch':epoch,
+	'model_state_dict':model.state_dict(),
+	'optimizer_state_dict':optimizer.state_dict(),
+	'loss1':Myloss}, args.model_save_path)
 
-print('>> [{}] Inference and analyze the model performance.'.format(datetime.datetime.now()))
-
-
-# Inference result save
+# Save inference result for validation data
+print('>> [{}] Inference for the validation data.'.format(datetime.datetime.now()))
 _, _ = evaluate(model, file_path='./valid_query/', save_path=args.inference_save_path, save=True)
+
+# Analysis
+print('>> [{}] Analysis using f1 score, auc score and GRAD-CAM.'.format(datetime.datetime.now()))
+
+# GRAD-CAM save
+gradcam('valid_query/valid_query_128.txt', './model/proposed/model.pt',  'cuda:0')
 
 # Calculate f1-score and auc score for each class and save
 non_att_f1, att_f1, total_f1 = total_f1_score('./valid_answer/', args.inference_save_path)
@@ -238,5 +245,9 @@ auc_score = get_auc_score(args.model, device, args.gamma, args.model_save_path, 
 with open(os.path.join(args.analyze_save_path, 'auc_score.txt'), 'a') as f:
 	auc_str = '\t'.join([str(x) for x in auc_score])+'\n'
 	f.write(auc_str)
+
+# Save inference result for test data
+print('>> [{}] Inference for the test data.'.format(datetime.datetime.now()))
+_, _ = evaluate(model, file_path='./test_query/', save_path='./test_answer/', save=True)
 
 print(">> Total time elapsed: {:.4f}s".format(time.time() - t_total))

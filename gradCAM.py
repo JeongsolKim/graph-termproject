@@ -47,7 +47,7 @@ def gradcam(file_path, model_load_path, device, gamma=1.0):
 	label_att = [find_keys_by_value(att_dict, x)[0]+'({})'.format(x) \
 		for x in np.where(to_np(labels)>threshold)[1] if x>0]
 
-	title = 'Prediction : '+ ' / '.join(pred_att) + '\nLabel : '+' / '.join(label_att)
+	title = '>> Prediction : '+ ' / '.join(pred_att) + '\n>> Label : '+' / '.join(label_att)
 
 	alpha_c = []
 	for i in range(output.size()[-1]):
